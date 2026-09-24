@@ -1,6 +1,7 @@
 import uuid
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -8,8 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.security import API_KEY_PREFIX, hash_api_key
 from app.models import ApiKey
 from app.schemas.tenant import API_KEY_WARNING
+from tests.conftest import ADMIN_HEADERS
 
 TENANTS = "/api/v1/tenants"
+
+
+@pytest.fixture(autouse=True)
+def as_admin(client: AsyncClient) -> None:
+    # /tenants is operator-only; every request in this module carries the admin key.
+    client.headers.update(ADMIN_HEADERS)
+
 
 HR_CONFIG: dict[str, Any] = {
     "primary_embedding_field": "description",
@@ -180,3 +189,42 @@ async def test_health_returns_200(client: AsyncClient) -> None:
     assert body["status"] == "ok"
     assert body["database"] == "ok"
     assert body["redis"] == "ok"
+
+
+# --- Admin authentication ---
+
+
+async def test_tenant_routes_require_the_admin_key(client: AsyncClient) -> None:
+    created = await client.post(TENANTS, json=tenant_payload())
+    tenant_id = created.json()["id"]
+    del client.headers["X-Admin-Key"]
+
+    missing = await client.get(f"{TENANTS}/{tenant_id}")
+    wrong = await client.get(f"{TENANTS}/{tenant_id}", headers={"X-Admin-Key": "x" * 40})
+    mint_key = await client.post(f"{TENANTS}/{tenant_id}/api-keys", json={"name": "stolen"})
+
+    assert (missing.status_code, wrong.status_code, mint_key.status_code) == (401, 401, 401)
+    assert missing.json()["error"]["message"] == "Missing X-Admin-Key header"
+
+
+async def test_a_tenant_api_key_is_not_an_admin_key(client: AsyncClient) -> None:
+    tenant = await create_tenant(client)
+    key = (await client.post(f"{TENANTS}/{tenant['id']}/api-keys", json={"name": "k"})).json()
+    del client.headers["X-Admin-Key"]
+
+    response = await client.get(f"{TENANTS}/{tenant['id']}", headers={"X-API-Key": key["api_key"]})
+
+    assert response.status_code == 401
+
+
+async def test_admin_api_is_disabled_without_admin_key(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ADMIN_API_KEY", None)
+
+    response = await client.post(TENANTS, json=tenant_payload())
+
+    assert response.status_code == 403
+    assert "ADMIN_API_KEY" in response.json()["error"]["message"]

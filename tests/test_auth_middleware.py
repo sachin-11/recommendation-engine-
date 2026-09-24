@@ -65,8 +65,9 @@ async def test_expired_key_returns_401(
 async def test_key_with_future_expiry_passes(client: AsyncClient, hr_tenant: TenantAuth) -> None:
     expires = (datetime.now(UTC) + timedelta(days=30)).isoformat()
     created = await client.post(
-        f"/api/v1/tenants/{hr_tenant.tenant_id}/api-keys",
+        "/api/v1/me/api-keys",
         json={"name": "expiring", "expires_at": expires},
+        headers=hr_tenant.headers,
     )
     assert created.status_code == 201
     assert created.json()["expires_at"] is not None
@@ -80,14 +81,16 @@ async def test_creating_already_expired_key_is_rejected(
 ) -> None:
     past = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     response = await client.post(
-        f"/api/v1/tenants/{hr_tenant.tenant_id}/api-keys", json={"name": "old", "expires_at": past}
+        "/api/v1/me/api-keys",
+        json={"name": "old", "expires_at": past},
+        headers=hr_tenant.headers,
     )
     assert response.status_code == 422
 
 
 async def test_revoked_key_returns_401(client: AsyncClient, hr_tenant: TenantAuth) -> None:
-    keys = (await client.get(f"/api/v1/tenants/{hr_tenant.tenant_id}/api-keys")).json()
-    await client.delete(f"/api/v1/tenants/{hr_tenant.tenant_id}/api-keys/{keys[0]['id']}")
+    keys = (await client.get("/api/v1/me/api-keys", headers=hr_tenant.headers)).json()
+    await client.delete(f"/api/v1/me/api-keys/{keys[0]['id']}", headers=hr_tenant.headers)
 
     response = await client.get("/api/v1/items", headers=hr_tenant.headers)
 
@@ -108,10 +111,26 @@ async def test_inactive_tenant_returns_403(
     assert response.status_code == 403
 
 
-async def test_tenant_routes_do_not_need_a_key(client: AsyncClient) -> None:
-    # Registration stays open; only item and index routes are protected.
+async def test_registration_does_not_need_a_key(client: AsyncClient) -> None:
+    # Sign-up stays open; everything that acts on a tenant needs a key.
     response = await client.post(
-        "/api/v1/tenants",
-        json={"name": "New", "email": "new@acme.example", "domain_type": "EDTECH"},
+        "/api/v1/auth/register",
+        json={
+            "name": "New",
+            "email": "new@acme.example",
+            "password": "new-password-123",
+            "domain_type": "EDTECH",
+        },
     )
     assert response.status_code == 201
+
+
+async def test_tenant_api_key_cannot_use_admin_routes(
+    client: AsyncClient, hr_tenant: TenantAuth
+) -> None:
+    response = await client.post(
+        f"/api/v1/tenants/{hr_tenant.tenant_id}/api-keys",
+        json={"name": "escalate"},
+        headers=hr_tenant.headers,
+    )
+    assert response.status_code == 401

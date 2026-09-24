@@ -264,14 +264,14 @@ Example response (scores differ with your data):
       "rank": 1,
       "external_id": "job-101",
       "score": 0.7108,
-      "score_label": "Good Match",
+      "score_label": "Excellent Match",
       "metadata": { "location": "Remote", "department": "Engineering", "employment_type": "full_time" }
     },
     {
       "rank": 2,
       "external_id": "job-102",
       "score": 0.3620,
-      "score_label": "Weak Match",
+      "score_label": "Fair Match",
       "metadata": { "location": "Bangalore", "department": "Data", "employment_type": "full_time" }
     }
   ],
@@ -282,7 +282,7 @@ Example response (scores differ with your data):
 }
 ```
 
-`score` is cosine similarity. Rank by it; treat `score_label` as a rough guide — short queries often score 0.3–0.6 even when the order is right. Identical queries are cached for 5 minutes (`X-Cache: HIT`).
+`score` is cosine similarity; rank by it. `score_label` buckets it: above 0.65 **Excellent**, above 0.50 **Good**, above 0.35 **Fair**, otherwise **Weak** (calibrated on `text-embedding-3-small`, where short queries score about 0.45–0.75 for relevant items). Identical queries are cached for 5 minutes (`X-Cache: HIT`).
 
 ## 5. Send feedback
 

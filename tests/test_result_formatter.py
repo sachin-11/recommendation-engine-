@@ -17,17 +17,52 @@ formatter = ResultFormatter()
     ("score", "label"),
     [
         (0.99, "Excellent Match"),
-        (0.86, "Excellent Match"),
-        (0.85, "Good Match"),
-        (0.71, "Good Match"),
-        (0.70, "Fair Match"),
-        (0.51, "Fair Match"),
-        (0.50, "Weak Match"),
+        (0.66, "Excellent Match"),
+        (0.65, "Good Match"),
+        (0.51, "Good Match"),
+        (0.50, "Fair Match"),
+        (0.36, "Fair Match"),
+        (0.35, "Weak Match"),
         (0.10, "Weak Match"),
     ],
 )
-def test_score_labels(score: float, label: str) -> None:
+def test_default_score_labels(score: float, label: str) -> None:
     assert score_label(score) == label
+
+
+@pytest.mark.parametrize(
+    ("score", "expected"),
+    # Real scores from the docs' domain guides (text-embedding-3-small).
+    [
+        (0.7108, "Excellent Match"),  # "senior python backend engineer with fastapi" -> job-101
+        (0.5410, "Good Match"),  # "spicy vegetarian pasta" -> Penne Arrabbiata
+        (0.4626, "Fair Match"),  # "spicy vegetarian pasta" -> Chilli Garlic Noodles
+        (0.2633, "Weak Match"),  # "light healthy breakfast" -> Paneer Tikka
+    ],
+)
+def test_labels_on_real_scores(score: float, expected: str) -> None:
+    assert score_label(score) == expected
+
+
+def test_custom_thresholds() -> None:
+    assert score_label(0.8, (0.9, 0.7, 0.5)) == "Good Match"
+    assert score_label(0.4, (0.9, 0.7, 0.5)) == "Weak Match"
+
+
+def test_thresholds_are_configurable_and_validated() -> None:
+    from pydantic import ValidationError
+
+    from app.core.config import Settings
+
+    base = {
+        "DATABASE_URL": "sqlite+aiosqlite:///:memory:",
+        "REDIS_URL": "redis://x",
+        "SECRET_KEY": "k" * 40,
+    }
+    parsed = Settings(**base, SCORE_LABEL_THRESHOLDS="0.8,0.6,0.4")  # type: ignore[arg-type]
+    assert parsed.SCORE_LABEL_THRESHOLDS == (0.8, 0.6, 0.4)
+    with pytest.raises(ValidationError):
+        Settings(**base, SCORE_LABEL_THRESHOLDS="0.4,0.6,0.8")  # type: ignore[arg-type]
 
 
 def test_results_are_ranked_by_score() -> None:

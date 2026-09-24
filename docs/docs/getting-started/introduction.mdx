@@ -12,7 +12,7 @@ RecoEngine is a recommendation API for any catalogue. You upload your items — 
 - **an item you already have**, for "similar jobs" or "more like this",
 - **a profile**, such as a candidate's skills and experience.
 
-You do not train a model. Each item is turned into text, embedded with OpenAI's `text-embedding-3-small`, and stored in a vector index of its own for your account. Queries are embedded the same way and matched by cosine similarity.
+You do not train a model. Each item is turned into text, embedded with OpenAI's `text-embedding-3-small`, and stored in your own namespace of a Pinecone vector index, isolated from every other account. Queries are embedded the same way and matched by cosine similarity.
 
 ## Core concepts
 

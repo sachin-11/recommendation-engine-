@@ -331,7 +331,8 @@ async def test_pinecone_service_reports_failed_chunks() -> None:
 
     assert result == {"upserted": 0, "failed": 1, "failed_ids": ["v1"]}
     client.create_index.assert_not_called()
-    client.Index.assert_called_once_with(name=f"reco-{str(tenant_id)[:8]}")
+    client.Index.assert_called_once_with(name="reco-shared")
+    assert index.upsert.call_args.kwargs["namespace"] == str(tenant_id)
 
 
 async def test_pinecone_service_creates_missing_index() -> None:
@@ -340,13 +341,82 @@ async def test_pinecone_service_creates_missing_index() -> None:
     service = PineconeService(client, cloud="aws", region="us-east-1")
 
     name = await service.ensure_index_exists("12345678-aaaa", dimension=1536)
-    await service.ensure_index_exists("12345678-aaaa", dimension=1536)
+    await service.ensure_index_exists("87654321-bbbb", dimension=1536)
 
-    assert name == "reco-12345678"
+    # One shared index for every tenant, created once.
+    assert name == "reco-shared"
     client.create_index.assert_called_once()
     kwargs = client.create_index.call_args.kwargs
     assert (kwargs["name"], kwargs["dimension"], kwargs["metric"]) == (
-        "reco-12345678",
+        "reco-shared",
         1536,
         "cosine",
     )
+
+
+async def test_pinecone_stats_only_show_the_tenants_own_namespace() -> None:
+    mine, other = uuid.uuid4(), uuid.uuid4()
+    stats = MagicMock(dimension=1536, index_fullness=0.0)
+    stats.namespaces = {str(mine): MagicMock(vector_count=3), str(other): MagicMock(vector_count=9)}
+    index = MagicMock()
+    index.describe_index_stats.return_value = stats
+    client = MagicMock()
+    client.Index.return_value = index
+
+    result = await PineconeService(client).get_index_stats(mine)
+
+    assert result["total_vector_count"] == 3
+    assert result["namespaces"] == {str(mine): 3}
+    assert str(other) not in str(result)
+
+
+async def test_pinecone_writes_and_deletes_are_scoped_to_the_namespace() -> None:
+    tenant_id = uuid.uuid4()
+    index = MagicMock()
+    client = MagicMock()
+    client.Index.return_value = index
+    service = PineconeService(client)
+
+    assert await service.delete_items(tenant_id, ["v1", "v2"]) is True
+    await service.delete_tenant_vectors(tenant_id)
+
+    assert index.delete.call_args_list[0].kwargs == {
+        "ids": ["v1", "v2"],
+        "namespace": str(tenant_id),
+    }
+    assert index.delete.call_args_list[1].kwargs == {
+        "delete_all": True,
+        "namespace": str(tenant_id),
+    }
+    client.delete_index.assert_not_called()
+
+
+async def test_deleting_a_missing_namespace_is_fine() -> None:
+    from pinecone import NotFoundError as PineconeNotFoundError
+
+    index = MagicMock()
+    index.delete.side_effect = PineconeNotFoundError("Namespace not found", 404)
+    client = MagicMock()
+    client.Index.return_value = index
+    service = PineconeService(client)
+
+    await service.delete_tenant_vectors(uuid.uuid4())
+    assert await service.delete_item(uuid.uuid4(), "v1") is True
+
+
+async def test_legacy_index_listing_never_includes_the_shared_index() -> None:
+    client = MagicMock()
+    client.list_indexes.return_value = [
+        MagicMock(name=n) for n in ("reco-shared", "reco-736da681", "reco-0098c77d", "other")
+    ]
+    for mock, name in zip(
+        client.list_indexes.return_value,
+        ("reco-shared", "reco-736da681", "reco-0098c77d", "other"),
+        strict=True,
+    ):
+        mock.name = name
+    service = PineconeService(client)
+
+    assert await service.list_legacy_indexes() == ["reco-0098c77d", "reco-736da681"]
+    with pytest.raises(ValueError):
+        await service.delete_legacy_index("reco-shared")

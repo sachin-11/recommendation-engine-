@@ -10,6 +10,8 @@ name: Deploy
 #   DEPLOY_SSH_KEY       private key for DEPLOY_USER
 #   SLACK_WEBHOOK_URL    optional; incoming webhook for notifications
 # Repository variables:
+#   DEPLOY_ENABLED       set to "true" once the secrets above exist; until then the
+#                        workflow is skipped instead of failing on every push
 #   AWS_REGION           default us-east-1
 #   DEPLOY_PATH          checkout on the server, default /home/ubuntu/recoengine
 #   PUBLIC_URL           e.g. https://recoengine.example.com (used for the health check)
@@ -35,6 +37,7 @@ env:
 jobs:
   build:
     name: Build and push images
+    if: vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,7 +116,7 @@ jobs:
   notify:
     name: Slack notification
     needs: [build, deploy]
-    if: always()
+    if: always() && needs.build.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
       - name: Post result

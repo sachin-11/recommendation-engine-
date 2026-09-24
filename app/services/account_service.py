@@ -95,16 +95,16 @@ class AccountService:
         password: str | None,
         vector_store: PineconeService,
     ) -> None:
-        """Delete the Pinecone index, then the tenant (items, keys and logs cascade)."""
+        """Delete the tenant's vectors, then the tenant (items, keys and logs cascade)."""
         if confirm_email.lower() != tenant.email:
             raise BadRequestError("confirm_email does not match the account email")
         if tenant.has_password and not verify_password(password or "", tenant.password_hash):
             raise UnauthorizedError("Password is incorrect")
         try:
-            await vector_store.delete_index(tenant.id)
+            await vector_store.delete_tenant_vectors(tenant.id)
         except VectorStoreUnavailableError as exc:
             raise ServiceUnavailableError(
-                f"Could not delete the vector index, nothing was deleted: {exc}"
+                f"Could not delete the tenant's vectors, nothing was deleted: {exc}"
             ) from exc
         await self._session.delete(tenant)
         await self._session.commit()

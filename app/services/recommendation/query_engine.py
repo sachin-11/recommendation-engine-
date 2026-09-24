@@ -6,6 +6,7 @@ search -> rank and format. Upstream failures become 503s; nothing partial is ret
 """
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -40,6 +41,8 @@ from app.services.recommendation.cache import RecommendationCache
 from app.services.recommendation.filter_builder import FilterBuilder
 from app.services.recommendation.result_formatter import ResultFormatter
 
+logger = logging.getLogger(__name__)
+
 CacheStatus = Literal["HIT", "MISS", "BYPASS"]
 RETRY_AFTER_SECONDS = 5
 
@@ -62,30 +65,32 @@ class BatchQuery:
     filters: dict[str, Any] | None = None
 
 
+def _unavailable(exc: Exception) -> ServiceUnavailableError:
+    retry = {"Retry-After": str(RETRY_AFTER_SECONDS)}
+    if isinstance(exc, VectorStoreTimeoutError):
+        return ServiceUnavailableError(
+            f"Vector search timed out after {QUERY_TIMEOUT_SECONDS:.0f}s. No results were "
+            "returned; retry in a few seconds.",
+            headers=retry,
+        )
+    if isinstance(exc, EmbeddingUnavailableError):
+        return ServiceUnavailableError(
+            "Embedding service is unavailable; retry in a few seconds.", headers=retry
+        )
+    return ServiceUnavailableError(f"Vector search is unavailable: {exc}", headers=retry)
+
+
 @contextmanager
 def _upstream_errors() -> Iterator[None]:
-    """Map OpenAI/Pinecone failures to API errors."""
+    """Map OpenAI/Pinecone failures to API errors, logging why a request got a 503."""
     try:
         yield
-    except VectorStoreTimeoutError as exc:
-        raise ServiceUnavailableError(
-            f"Vector search timed out after {QUERY_TIMEOUT_SECONDS:.0f}s. No results were "
-            f"returned; retry in a few seconds.",
-            headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
-        ) from exc
-    except VectorStoreUnavailableError as exc:
-        raise ServiceUnavailableError(
-            f"Vector search is unavailable: {exc}",
-            headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
-        ) from exc
+    except (VectorStoreUnavailableError, EmbeddingUnavailableError) as exc:
+        logger.warning("Recommendation unavailable (%s): %s", type(exc).__name__, exc)
+        raise _unavailable(exc) from exc
     except VectorStoreQueryError as exc:
         raise BadRequestError(
             f"Pinecone rejected the query; check that filter values match the stored types: {exc}"
-        ) from exc
-    except EmbeddingUnavailableError as exc:
-        raise ServiceUnavailableError(
-            "Embedding service is unavailable; retry in a few seconds.",
-            headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
         ) from exc
     except EmbeddingInputError as exc:
         raise BadRequestError(f"The query text was rejected by the embedding model: {exc}") from exc

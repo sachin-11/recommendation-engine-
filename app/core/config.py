@@ -41,7 +41,9 @@ class Settings(BaseSettings):
 
     # --- Pinecone ---
     PINECONE_API_KEY: SecretStr | None = None
-    # Region and cloud for serverless indexes, e.g. us-east-1 on aws.
+    # One shared serverless index; each tenant gets its own namespace in it.
+    PINECONE_INDEX_NAME: str = Field(default="reco-shared", pattern=r"^[a-z0-9-]{1,45}$")
+    # Region and cloud for the serverless index, e.g. us-east-1 on aws.
     PINECONE_ENVIRONMENT: str = "us-east-1"
     PINECONE_CLOUD: Literal["aws", "gcp", "azure"] = "aws"
 
@@ -50,6 +52,12 @@ class Settings(BaseSettings):
     MAX_SYNC_ITEMS: int = Field(default=50, gt=0)
     MAX_CSV_ITEMS: int = Field(default=10_000, gt=0)
     MAX_CSV_BYTES: int = Field(default=10 * 1024 * 1024, gt=0)
+
+    # --- Recommendations ---
+    # Lower bounds (exclusive) for Excellent, Good and Fair labels; lower is Weak.
+    # Calibrated on text-embedding-3-small, where short queries against item text score
+    # about 0.45-0.75 for relevant items and below 0.35 for unrelated ones.
+    SCORE_LABEL_THRESHOLDS: Annotated[tuple[float, float, float], NoDecode] = (0.65, 0.50, 0.35)
 
     # --- Rate limiting ---
     RATE_LIMIT_RPM: int = Field(default=100, gt=0)
@@ -63,6 +71,8 @@ class Settings(BaseSettings):
 
     # --- Security ---
     SECRET_KEY: SecretStr = Field(min_length=32)
+    # Operator key for /api/v1/tenants/*. Unset = those routes are disabled.
+    ADMIN_API_KEY: SecretStr | None = None
     ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     # --- Operational ---
@@ -82,12 +92,37 @@ class Settings(BaseSettings):
             )
         return value
 
-    @field_validator("OPENAI_API_KEY", "PINECONE_API_KEY", "SENTRY_DSN", mode="before")
+    @field_validator(
+        "OPENAI_API_KEY", "PINECONE_API_KEY", "SENTRY_DSN", "ADMIN_API_KEY", mode="before"
+    )
     @classmethod
     def _blank_key_is_unset(cls, value: object) -> object:
         # `OPENAI_API_KEY=` in .env means "not configured", not an empty key.
         if isinstance(value, str) and (not value.strip() or _PLACEHOLDER_MARKER in value):
             return None
+        return value
+
+    @field_validator("ADMIN_API_KEY")
+    @classmethod
+    def _admin_key_is_strong(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value()) < 32:
+            raise ValueError("ADMIN_API_KEY must be at least 32 characters")
+        return value
+
+    @field_validator("SCORE_LABEL_THRESHOLDS", mode="before")
+    @classmethod
+    def _parse_thresholds(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(float(part) for part in value.split(","))
+        return value
+
+    @field_validator("SCORE_LABEL_THRESHOLDS")
+    @classmethod
+    def _thresholds_descending(
+        cls, value: tuple[float, float, float]
+    ) -> tuple[float, float, float]:
+        if not all(-1 <= t <= 1 for t in value) or not value[0] > value[1] > value[2]:
+            raise ValueError("SCORE_LABEL_THRESHOLDS must be three descending values in [-1, 1]")
         return value
 
     @field_validator("ALLOWED_ORIGINS", mode="before")

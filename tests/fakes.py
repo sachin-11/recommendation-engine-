@@ -12,7 +12,7 @@ import openai
 from app.services.embedding.pinecone_service import (
     VectorStoreTimeoutError,
     VectorStoreUnavailableError,
-    index_name_for,
+    namespace_for,
     sanitize_metadata,
 )
 
@@ -70,28 +70,32 @@ class FakeOpenAIClient:
 
 
 class FakeVectorStore:
-    """Mimics PineconeService: one "index" per tenant, vectors keyed by id."""
+    """Mimics PineconeService: one shared index, a namespace per tenant, vectors keyed by id."""
+
+    INDEX_NAME = "reco-shared"
 
     def __init__(self) -> None:
-        self.indexes: dict[str, dict[str, dict[str, Any]]] = {}
+        # namespace (tenant id) -> vector id -> {values, metadata}
+        self.namespaces: dict[str, dict[str, dict[str, Any]]] = {}
+        self.index_created = False
         self.unavailable = False
         self.fail_ids: set[str] = set()
         self.query_times_out = False
         self.queries: list[dict[str, Any]] = []
 
     async def ensure_index_exists(
-        self, tenant_id: uuid.UUID | str, dimension: int | None = None
+        self, tenant_id: uuid.UUID | str | None = None, dimension: int | None = None
     ) -> str:
         if self.unavailable:
             raise VectorStoreUnavailableError("Pinecone is down (fake)")
-        name = index_name_for(tenant_id)
-        self.indexes.setdefault(name, {})
-        return name
+        self.index_created = True
+        return self.INDEX_NAME
 
     async def upsert_batch(
         self, tenant_id: uuid.UUID | str, items: list[dict[str, Any]]
     ) -> dict[str, Any]:
-        index = self.indexes[index_name_for(tenant_id)]
+        assert self.index_created, "upsert before ensure_index_exists"
+        index = self.namespaces.setdefault(namespace_for(tenant_id), {})
         failed = [item["id"] for item in items if item["id"] in self.fail_ids]
         for item in items:
             if item["id"] not in self.fail_ids:
@@ -117,40 +121,41 @@ class FakeVectorStore:
     async def delete_item(self, tenant_id: uuid.UUID | str, pinecone_id: str) -> bool:
         if self.unavailable:
             raise VectorStoreUnavailableError("Pinecone is down (fake)")
-        self.indexes.get(index_name_for(tenant_id), {}).pop(pinecone_id, None)
+        self.namespaces.get(namespace_for(tenant_id), {}).pop(pinecone_id, None)
         return True
 
     async def delete_items(self, tenant_id: uuid.UUID | str, pinecone_ids: list[str]) -> bool:
         if self.unavailable:
             raise VectorStoreUnavailableError("Pinecone is down (fake)")
-        index = self.indexes.get(index_name_for(tenant_id), {})
+        index = self.namespaces.get(namespace_for(tenant_id), {})
         for pinecone_id in pinecone_ids:
             index.pop(pinecone_id, None)
         return True
 
-    async def delete_index(self, tenant_id: uuid.UUID | str) -> None:
+    async def delete_tenant_vectors(self, tenant_id: uuid.UUID | str) -> None:
         if self.unavailable:
             raise VectorStoreUnavailableError("Pinecone is down (fake)")
-        self.indexes.pop(index_name_for(tenant_id), None)
+        self.namespaces.pop(namespace_for(tenant_id), None)
 
     async def get_index_stats(self, tenant_id: uuid.UUID | str) -> dict[str, Any]:
         if self.unavailable:
             raise VectorStoreUnavailableError("Pinecone is down (fake)")
-        name = index_name_for(tenant_id)
-        if name not in self.indexes:
-            return {"index_name": name, "exists": False, "total_vector_count": 0}
-        count = len(self.indexes[name])
+        namespace = namespace_for(tenant_id)
+        base = {"index_name": self.INDEX_NAME, "namespace": namespace}
+        if not self.index_created:
+            return {**base, "exists": False, "total_vector_count": 0}
+        count = len(self.namespaces.get(namespace, {}))
         return {
-            "index_name": name,
+            **base,
             "exists": True,
             "total_vector_count": count,
             "dimension": TEST_DIMENSION,
             "index_fullness": 0.0,
-            "namespaces": {"": count},
+            "namespaces": {namespace: count},
         }
 
     def vectors(self, tenant_id: uuid.UUID | str) -> dict[str, dict[str, Any]]:
-        return self.indexes.get(index_name_for(tenant_id), {})
+        return self.namespaces.get(namespace_for(tenant_id), {})
 
     async def query(
         self,

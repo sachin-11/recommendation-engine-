@@ -1,5 +1,6 @@
 """FastAPI application factory, lifespan, middleware and global error handling."""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -24,6 +25,7 @@ from app.core.logging import configure_sentry, configure_structlog
 from app.core.redis_client import check_redis, create_redis_client, get_redis
 from app.middleware.request_id import RequestIDMiddleware
 from app.schemas.common import ErrorBody, ErrorDetail, ErrorResponse, HealthResponse
+from app.services.embedding.pinecone_service import get_pinecone_service
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -42,9 +44,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Database connection verified")
     app.state.redis = await create_redis_client()
     logger.info("Redis connection verified")
+    # In the background: the first recommendation would otherwise pay for opening the
+    # Pinecone index and its connection, which can exceed the 5 s query timeout.
+    warm_up = asyncio.create_task(get_pinecone_service().warm_up())
     try:
         yield
     finally:
+        warm_up.cancel()
         await app.state.redis.aclose()
         await engine.dispose()
         logger.info("Shutdown complete")

@@ -18,8 +18,8 @@ You get a REST API, an admin dashboard, SDKs for JavaScript and Python, and a pr
              ▼                      ▼                   ▼                   ▼                     ▼
       PostgreSQL 15            Redis 7            worker (polls        OpenAI embeddings     Pinecone
       tenants, API keys,       rate limits,       PENDING items,       text-embedding-3-     one serverless
-      items, batches,          embedding cache,   embeds, upserts)     small (1536-d)        index per tenant
-      logs, feedback           result cache (5m)
+      items, batches,          embedding cache,   embeds, upserts)     small (1536-d)        shared index,
+      logs, feedback           result cache (5m)                                              namespace per tenant
                                                         │
                                    Prometheus ◄── /metrics (api, worker) ──► Grafana dashboard
 ```

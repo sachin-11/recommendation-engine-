@@ -27,7 +27,7 @@ AWS_REGION=us-east-1 KEY_NAME=recoengine ./scripts/aws-setup.sh             # EC
 AWS_REGION=us-east-1 KEY_NAME=recoengine ./scripts/aws-setup.sh --with-rds --with-redis
 ```
 
-It prints the ECR registry, the server's IP, and (with the flags) the RDS and ElastiCache endpoints. Put the API in the **same region as your Pinecone indexes** — cross-region round trips dominate latency.
+It prints the ECR registry, the server's IP, and (with the flags) the RDS and ElastiCache endpoints. Put the API in the **same region as your Pinecone index** — cross-region round trips dominate latency.
 
 ## 2. Prepare the server
 

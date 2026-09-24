@@ -16,6 +16,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only-0123456789"
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 os.environ["ALLOWED_ORIGINS"] = "http://localhost:3000"
+os.environ["ADMIN_API_KEY"] = "test-admin-key-for-pytest-only-0123456789"
 
 import fakeredis
 import pytest
@@ -121,6 +122,9 @@ async def client(
 
 # --- Tenant + API key helpers ---
 
+TEST_PASSWORD = "test-password-123"
+ADMIN_HEADERS = {"X-Admin-Key": os.environ["ADMIN_API_KEY"]}
+
 HR_CONFIG: dict[str, Any] = {
     "primary_embedding_field": "description",
     "searchable_fields": ["title", "description", "skills"],
@@ -149,16 +153,15 @@ async def register_tenant(
     payload: dict[str, Any] = {
         "name": email.split("@")[0],
         "email": email,
+        "password": TEST_PASSWORD,
         "domain_type": domain_type,
     }
     if domain_config is not None:
         payload["domain_config"] = domain_config
-    tenant = await client.post("/api/v1/tenants", json=payload)
-    assert tenant.status_code == 201, tenant.text
-    body = tenant.json()
-    key = await client.post(f"/api/v1/tenants/{body['id']}/api-keys", json={"name": "test"})
-    assert key.status_code == 201, key.text
-    return TenantAuth(body["id"], key.json()["api_key"], body["domain_config"])
+    response = await client.post("/api/v1/auth/register", json=payload)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    return TenantAuth(body["tenant"]["id"], body["api_key"], body["tenant"]["domain_config"])
 
 
 @pytest.fixture

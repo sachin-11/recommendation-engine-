@@ -35,6 +35,10 @@ curl -X DELETE https://api.recoengine.io/api/v1/me/api-keys/<key_id> -H "X-API-K
 An API key can upload and delete items. Call RecoEngine from your backend, not from browser or mobile code.
 :::
 
+## Operator (admin) routes
+
+`/api/v1/tenants/*` manages any tenant by id and is for the people running RecoEngine, not for tenants. It requires the `X-Admin-Key` header (the server's `ADMIN_API_KEY`) and is disabled when that is not set. A tenant API key never works there.
+
 ## Dashboard sessions
 
 Signing in to the dashboard with email and password (`POST /auth/login`) returns a 7-day **session key**. It works like an API key, is hidden from the key list, and is revoked when you sign out (`POST /auth/logout`). Login is limited to 10 attempts per minute per email.

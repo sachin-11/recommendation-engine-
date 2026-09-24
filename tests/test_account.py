@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.passwords import hash_password, verify_password
 from app.models import ApiKey, Tenant
+from tests.conftest import ADMIN_HEADERS
 from tests.fakes import FakeVectorStore
 
 AUTH = "/api/v1/auth"
@@ -124,9 +125,12 @@ async def test_login_is_rate_limited(client: AsyncClient) -> None:
 
 
 async def test_tenant_without_password_cannot_log_in(client: AsyncClient) -> None:
-    await client.post(
-        "/api/v1/tenants", json={"name": "Api", "email": "api@acme.example", "domain_type": "HR"}
+    created = await client.post(
+        "/api/v1/tenants",
+        json={"name": "Api", "email": "api@acme.example", "domain_type": "HR"},
+        headers=ADMIN_HEADERS,
     )
+    assert created.status_code == 201
     response = await client.post(
         f"{AUTH}/login", json={"email": "api@acme.example", "password": PASSWORD}
     )

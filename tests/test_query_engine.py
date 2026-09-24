@@ -287,8 +287,9 @@ async def test_pinecone_query_maps_matches() -> None:
         _match("v2", 0.5, None),
     ]
     service = PineconeService(_mock_client(index))
+    tenant_id = uuid.uuid4()
 
-    matches = await service.query(uuid.uuid4(), top_k=2, vector=[0.1], filter={"x": {"$eq": 1}})
+    matches = await service.query(tenant_id, top_k=2, vector=[0.1], filter={"x": {"$eq": 1}})
 
     assert matches == [
         {"id": "v1", "score": 0.9, "metadata": {"external_id": "a"}},
@@ -296,6 +297,7 @@ async def test_pinecone_query_maps_matches() -> None:
     ]
     kwargs = index.query.call_args.kwargs
     assert kwargs["filter"] == {"x": {"$eq": 1}}
+    assert kwargs["namespace"] == str(tenant_id)
     assert kwargs["include_metadata"] is True
     assert kwargs["timeout"] == 5.0
 

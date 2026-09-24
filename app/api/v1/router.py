@@ -2,10 +2,11 @@
 
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
 from app.api.v1 import account, analytics, recommend
 from app.api.v1.items import index_router, items_router
+from app.middleware.admin import require_admin
 from app.schemas.common import ERROR_RESPONSES, ErrorResponse
 from app.schemas.tenant import (
     ApiKeyCreate,
@@ -18,7 +19,17 @@ from app.services.tenant_service import TenantServiceDep
 
 api_router = APIRouter()
 
-tenants_router = APIRouter(prefix="/tenants", tags=["tenants"], responses=ERROR_RESPONSES)
+# Operator-only: these act on any tenant by id, so they need the admin key, not an API key.
+tenants_router = APIRouter(
+    prefix="/tenants",
+    tags=["tenants"],
+    dependencies=[Depends(require_admin)],
+    responses={
+        **ERROR_RESPONSES,
+        401: {"model": ErrorResponse, "description": "Missing or invalid X-Admin-Key"},
+        403: {"model": ErrorResponse, "description": "Admin API disabled (no ADMIN_API_KEY)"},
+    },
+)
 
 
 @tenants_router.post(

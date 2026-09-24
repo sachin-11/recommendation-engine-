@@ -307,7 +307,8 @@ async def test_index_stats(client: AsyncClient, hr_tenant: TenantAuth) -> None:
     await upload(client, hr_tenant, JOBS, run_async=False)
     stats = (await client.get("/api/v1/index/stats", headers=hr_tenant.headers)).json()
 
-    assert stats["index_name"] == f"reco-{hr_tenant.tenant_id[:8]}"
+    assert stats["index_name"] == "reco-shared"
+    assert stats["namespace"] == hr_tenant.tenant_id
     assert stats["exists"] is True
     assert stats["total_vector_count"] == 3
     assert stats["items_by_status"] == {"PENDING": 0, "PROCESSING": 0, "DONE": 3, "FAILED": 0}

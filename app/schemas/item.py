@@ -135,6 +135,7 @@ class ItemListResponse(BaseModel):
 
 class IndexStatsResponse(BaseModel):
     index_name: str
+    namespace: str = Field(description="This tenant's namespace in the shared index.")
     exists: bool
     total_vector_count: int
     dimension: int | None = None

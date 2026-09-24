@@ -35,7 +35,8 @@ TAGS: list[dict[str, str]] = [
     {"name": "Index", "description": "Vector index statistics and rebuilds."},
     {
         "name": "Tenants",
-        "description": "Tenant management by id. Prefer `/auth` and `/me` for new integrations.",
+        "description": "Operator-only tenant management by id. Requires `X-Admin-Key` "
+        "(ADMIN_API_KEY); disabled when it is not configured. Tenants use `/auth` and `/me`.",
     },
     {"name": "Health", "description": "Liveness of the API and its dependencies."},
 ]
@@ -176,20 +177,21 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
     ),
     ("post", "/api/v1/tenants"): (
         "createTenant",
-        "Create a tenant without a password. New integrations should use `/auth/register`.",
+        "Operator only: create a tenant without a password. Customers sign up with "
+        "`/auth/register`.",
     ),
-    ("get", "/api/v1/tenants/{tenant_id}"): ("getTenant", "A tenant by id."),
+    ("get", "/api/v1/tenants/{tenant_id}"): ("getTenant", "Operator only: a tenant by id."),
     ("post", "/api/v1/tenants/{tenant_id}/api-keys"): (
         "createTenantApiKey",
-        "Create an API key for a tenant by id.",
+        "Operator only: create an API key for a tenant, e.g. for support or migrations.",
     ),
     ("get", "/api/v1/tenants/{tenant_id}/api-keys"): (
         "listTenantApiKeys",
-        "API keys of a tenant by id.",
+        "Operator only: API keys of a tenant by id.",
     ),
     ("delete", "/api/v1/tenants/{tenant_id}/api-keys/{key_id}"): (
         "revokeTenantApiKey",
-        "Revoke an API key of a tenant by id.",
+        "Operator only: revoke an API key of a tenant, e.g. a leaked one.",
     ),
 }
 
@@ -239,14 +241,14 @@ _RESULTS_EXAMPLE = {
             "rank": 1,
             "external_id": "job-101",
             "score": 0.7677,
-            "score_label": "Good Match",
+            "score_label": "Excellent Match",
             "metadata": {"location": "Bangalore", "department": "Engineering"},
         },
         {
             "rank": 2,
             "external_id": "job-106",
             "score": 0.6809,
-            "score_label": "Fair Match",
+            "score_label": "Excellent Match",
             "metadata": {"location": "Remote", "department": "Engineering"},
         },
     ],

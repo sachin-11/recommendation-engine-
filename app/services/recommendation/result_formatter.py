@@ -2,21 +2,17 @@
 
 from typing import Any
 
+from app.core.config import settings
 from app.models.tenant import Tenant
 
-# (exclusive lower bound, label), checked in order. Cosine similarity of
-# text-embedding-3 models rarely exceeds ~0.7 even for close matches, so tune these
-# against real queries before showing labels to end users.
-SCORE_LABELS: list[tuple[float, str]] = [
-    (0.85, "Excellent Match"),
-    (0.70, "Good Match"),
-    (0.50, "Fair Match"),
-]
+# Labels for scores above the thresholds in SCORE_LABEL_THRESHOLDS, highest first.
+LABELS = ("Excellent Match", "Good Match", "Fair Match")
 LOWEST_LABEL = "Weak Match"
 
 
-def score_label(score: float) -> str:
-    for threshold, label in SCORE_LABELS:
+def score_label(score: float, thresholds: tuple[float, float, float] | None = None) -> str:
+    """Label a cosine similarity. Scores above each threshold (exclusive) get its label."""
+    for threshold, label in zip(thresholds or settings.SCORE_LABEL_THRESHOLDS, LABELS, strict=True):
         if score > threshold:
             return label
     return LOWEST_LABEL
