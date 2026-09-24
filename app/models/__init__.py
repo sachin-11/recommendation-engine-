@@ -6,6 +6,7 @@ from app.models.item import EmbeddingStatus, Item
 from app.models.item_batch import BatchStatus, ItemBatch
 from app.models.recommendation_log import QueryType, RecommendationLog
 from app.models.tenant import DomainType, Tenant
+from app.models.token_usage import TokenUsage, UsageSource
 from app.models.user_feedback import FeedbackType, UserFeedback
 
 __all__ = [
@@ -21,5 +22,7 @@ __all__ = [
     "QueryType",
     "RecommendationLog",
     "Tenant",
+    "TokenUsage",
+    "UsageSource",
     "UserFeedback",
 ]

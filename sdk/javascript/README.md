@@ -57,7 +57,7 @@ CommonJS works too: `const { RecoEngineClient } = require("@recoengine/sdk");`
 | `recommend.byProfile(profile, options?)` | `RecommendResult` |
 | `recommend.batch(queries, { topK? })` | `BatchRecommendResult` |
 | `recommend.submitFeedback(queryId, itemId, type)` | `void` |
-| `analytics.overview()` / `analytics.feedbackSummary({ days? })` / `analytics.usage({ days? })` | stats |
+| `analytics.overview()` / `analytics.feedbackSummary({ days? })` / `analytics.usage({ days? })` / `analytics.tokens({ days? })` | stats |
 
 `options` is `{ topK?, filters?, includeRawData? }`. Filters: `"Delhi"` exact, `["Delhi", "Pune"]` any of, `{ gte: 3, lte: 8 }` range.
 

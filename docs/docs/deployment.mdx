@@ -60,6 +60,7 @@ The script builds both images, pushes them to ECR, then on the server pulls them
 - `GET /metrics` (blocked at nginx; scraped internally) exposes `reco_requests_total`, `reco_latency_seconds`, `items_total` and `embedding_pipeline_duration_seconds`. The worker exposes its own on port 9100.
 - Grafana has a pre-built **RecoEngine overview** dashboard. It listens on `127.0.0.1:3001`; open it with `ssh -L 3001:localhost:3001 ubuntu@<server>`.
 - Set `SENTRY_DSN` to report errors to Sentry.
+- OpenAI embedding tokens are counted per tenant, per day, for uploads and queries. `GET /api/v1/analytics/tokens` (and the Analytics page) shows the totals and an estimated cost from `EMBEDDING_PRICE_PER_MILLION_TOKENS` (default `0.02`); every recommendation response carries its own `embedding_tokens`, and Prometheus exports `openai_embedding_tokens_total`.
 - Set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY` to trace every recommendation in LangSmith: the request (tenant, query or profile, filters, results, cache status), the OpenAI embedding call (with cache hits) and the Pinecone search, each with its duration and the request id. Vectors are never sent; set `LANGSMITH_HIDE_INPUTS=true` to keep query and item text out as well.
 
 ## Backups

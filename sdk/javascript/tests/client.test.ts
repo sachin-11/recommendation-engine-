@@ -57,6 +57,17 @@ describe("RecoEngineClient", () => {
     });
     await expect(client.analytics.overview()).resolves.toEqual({ total_items: 3 });
   });
+
+  it("fetches token usage for a period", async () => {
+    const { client, mock } = setup();
+    mock.onGet("/analytics/tokens").reply((config) => {
+      expect(config.params).toEqual({ days: 7 });
+      return [200, { days: 7, total_tokens: 1234, by_source: { INGEST: 1000, QUERY: 234 } }];
+    });
+    const usage = await client.analytics.tokens({ days: 7 });
+    expect(usage.total_tokens).toBe(1234);
+    expect(usage.by_source.QUERY).toBe(234);
+  });
 });
 
 describe("items", () => {

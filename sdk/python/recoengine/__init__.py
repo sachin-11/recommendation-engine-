@@ -30,6 +30,7 @@ from recoengine.models import (
     Recommendation,
     RecommendResult,
     SyncUploadResult,
+    TokenUsage,
     UploadResult,
     UsageStats,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "Recommendation",
     "ServiceUnavailableError",
     "SyncUploadResult",
+    "TokenUsage",
     "UploadResult",
     "UsageStats",
     "ValidationError",

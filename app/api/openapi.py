@@ -171,6 +171,11 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "getFeedbackSummary",
         "Feedback counts by type for the last `days` days.",
     ),
+    ("get", "/api/v1/analytics/tokens"): (
+        "getTokenUsage",
+        "OpenAI embedding tokens for the last `days` days: uploads (INGEST) and queries "
+        "(QUERY), daily totals, cache hits and an estimated cost.",
+    ),
     ("get", "/api/v1/analytics/usage"): (
         "getUsage",
         "Daily volume and latency, query types and cache hit rate for the last `days` days.",

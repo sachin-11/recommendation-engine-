@@ -37,6 +37,9 @@ class RecommendationLog(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     filters_applied: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
     # HIT, MISS, BYPASS (raw data requested) or PARTIAL (batch); for the cache hit rate.
     cache_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    embedding_tokens: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     def __repr__(self) -> str:
         return f"<RecommendationLog id={self.id} {self.query_type} results={self.results_count}>"

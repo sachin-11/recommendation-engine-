@@ -138,6 +138,8 @@ export interface RecommendResult {
   /** Pass to `submitFeedback`. */
   query_id: string;
   latency_ms: number;
+  /** OpenAI tokens used to embed the query; 0 on cache hits and item queries. */
+  embedding_tokens: number;
   request_id: string;
   /** Value of the X-Cache response header. */
   cache: CacheStatus | null;
@@ -153,6 +155,8 @@ export interface BatchRecommendResult {
   results: Record<string, Recommendation[]>;
   query_ids: Record<string, string>;
   latency_ms: number;
+  /** OpenAI tokens used for the whole batch. */
+  embedding_tokens: number;
   request_id: string;
   cache: CacheStatus | null;
 }
@@ -190,6 +194,23 @@ export interface UsageStats {
   by_query_type: Record<QueryType, number>;
   cache_hit_rate: number | null;
   feedback_total: number;
+}
+
+export interface TokenUsage {
+  days: number;
+  since: string;
+  /** Embedding model the tokens were spent on. */
+  model: string;
+  total_tokens: number;
+  /** Tokens for uploads (INGEST) and queries (QUERY). */
+  by_source: { INGEST: number; QUERY: number };
+  api_calls: number;
+  texts_embedded: number;
+  /** Texts served from the embedding cache, which cost no tokens. */
+  cache_hits: number;
+  price_per_million_tokens: number;
+  estimated_cost_usd: number;
+  daily: { date: string; ingest_tokens: number; query_tokens: number }[];
 }
 
 // ---------------------------------------------------------------- errors

@@ -91,6 +91,16 @@ def traced(
     return decorator
 
 
+def set_run_usage(tokens: int, *, model: str) -> None:
+    """Report token usage on the current run so LangSmith shows tokens and cost."""
+    from langsmith.run_helpers import get_current_run_tree
+
+    run = get_current_run_tree()
+    if run is not None:
+        run.metadata.update({"ls_provider": "openai", "ls_model_name": model})
+        run.set(usage_metadata={"input_tokens": tokens, "output_tokens": 0, "total_tokens": tokens})
+
+
 def add_run_metadata(**metadata: Any) -> None:
     """Attach metadata to the current run, if one is being traced."""
     from langsmith.run_helpers import get_current_run_tree

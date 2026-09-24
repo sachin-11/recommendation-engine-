@@ -113,6 +113,8 @@ class RecommendResult(_Model):
     #: Pass to `recommend.submit_feedback`.
     query_id: str
     latency_ms: int
+    #: OpenAI tokens used to embed the query; 0 on cache hits and item queries.
+    embedding_tokens: int = 0
     request_id: str
     #: Value of the X-Cache response header.
     cache: Optional[CacheStatus] = None
@@ -122,6 +124,8 @@ class BatchRecommendResult(_Model):
     results: Dict[str, List[Recommendation]]
     query_ids: Dict[str, str]
     latency_ms: int
+    #: OpenAI tokens used for the whole batch.
+    embedding_tokens: int = 0
     request_id: str
     cache: Optional[CacheStatus] = None
 
@@ -165,6 +169,29 @@ class UsageStats(_Model):
     by_query_type: Dict[str, int]
     cache_hit_rate: Optional[float] = None
     feedback_total: int
+
+
+class DailyTokens(_Model):
+    date: str
+    ingest_tokens: int
+    query_tokens: int
+
+
+class TokenUsage(_Model):
+    days: int
+    since: datetime
+    #: Embedding model the tokens were spent on.
+    model: str
+    total_tokens: int
+    #: Tokens for uploads (``INGEST``) and queries (``QUERY``).
+    by_source: Dict[str, int]
+    api_calls: int
+    texts_embedded: int
+    #: Texts served from the embedding cache, which cost no tokens.
+    cache_hits: int
+    price_per_million_tokens: float
+    estimated_cost_usd: float
+    daily: List[DailyTokens]
 
 
 class BatchQuery(_Model):

@@ -71,7 +71,7 @@ The async client has the same methods as coroutines.
 | `recommend.by_item(external_id, ...)` / `recommend.by_profile(profile, ...)` | `RecommendResult` |
 | `recommend.batch(queries, top_k=10)` | `BatchRecommendResult` |
 | `recommend.submit_feedback(query_id, item_id, feedback_type)` | `None` |
-| `analytics.overview()` / `analytics.feedback_summary(days=30)` / `analytics.usage(days=30)` | stats models |
+| `analytics.overview()` / `analytics.feedback_summary(days=30)` / `analytics.usage(days=30)` / `analytics.tokens(days=30)` | stats models |
 
 Filters use your domain config's `filter_fields`: `"Delhi"` exact, `["Delhi", "Pune"]` any of, `{"gte": 3, "lte": 8}` range.
 

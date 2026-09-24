@@ -32,8 +32,20 @@ class _Embedding:
 
 
 @dataclass
+class _Usage:
+    prompt_tokens: int
+    total_tokens: int
+
+
+@dataclass
 class _EmbeddingResponse:
     data: list[_Embedding]
+    usage: _Usage
+
+
+def fake_tokens(texts: list[str]) -> int:
+    """Deterministic stand-in for OpenAI's token count: one token per word."""
+    return sum(len(text.split()) for text in texts)
 
 
 class FakeEmbeddings:
@@ -57,7 +69,8 @@ class FakeEmbeddings:
             )
         # Returned out of order on purpose: callers must sort by index.
         data = [_Embedding(i, fake_vector(t, dimensions)) for i, t in enumerate(input)]
-        return _EmbeddingResponse(data=list(reversed(data)))
+        tokens = fake_tokens(input)
+        return _EmbeddingResponse(data=list(reversed(data)), usage=_Usage(tokens, tokens))
 
     @property
     def embedded_texts(self) -> list[str]:

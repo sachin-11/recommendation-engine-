@@ -21,10 +21,12 @@ from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.core.metrics import EMBEDDING_PIPELINE_DURATION
 from app.core.tracing import traced
+from app.core.usage import track_embedding_usage
 from app.models.base import utcnow
 from app.models.item import EmbeddingStatus, Item
 from app.models.item_batch import BatchStatus, ItemBatch
 from app.models.tenant import Tenant
+from app.models.token_usage import UsageSource
 from app.services.embedding.openai_embedder import (
     EmbeddingInputError,
     EmbeddingUnavailableError,
@@ -32,6 +34,7 @@ from app.services.embedding.openai_embedder import (
 )
 from app.services.embedding.pinecone_service import PineconeService, VectorStoreUnavailableError
 from app.services.embedding.text_builder import TextBuilder
+from app.services.token_usage import record_embedding_usage
 
 logger = logging.getLogger(__name__)
 
@@ -115,17 +118,23 @@ class EmbeddingPipeline:
         if not items:
             return []
         started = time.perf_counter()
-        try:
-            await self._embed_and_store(items, tenant)
-        except UpstreamUnavailableError:
-            EMBEDDING_PIPELINE_DURATION.labels("unavailable").observe(time.perf_counter() - started)
-            for item in items:
-                if item.embedding_status is EmbeddingStatus.PROCESSING:
-                    item.embedding_status = EmbeddingStatus.PENDING
-            await session.commit()
-            raise
+        with track_embedding_usage() as usage:
+            try:
+                await self._embed_and_store(items, tenant)
+            except UpstreamUnavailableError:
+                EMBEDDING_PIPELINE_DURATION.labels("unavailable").observe(
+                    time.perf_counter() - started
+                )
+                for item in items:
+                    if item.embedding_status is EmbeddingStatus.PROCESSING:
+                        item.embedding_status = EmbeddingStatus.PENDING
+                await session.commit()
+                # Tokens spent before the failure still count.
+                await record_embedding_usage(session, tenant.id, UsageSource.INGEST, usage)
+                raise
         EMBEDDING_PIPELINE_DURATION.labels("ok").observe(time.perf_counter() - started)
         await session.commit()
+        await record_embedding_usage(session, tenant.id, UsageSource.INGEST, usage)
         return [
             ItemResult(item.external_id, item.embedding_status, item.item_metadata.get("error"))
             for item in items

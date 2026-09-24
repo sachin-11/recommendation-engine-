@@ -2444,6 +2444,97 @@
         "description": "Daily volume and latency, query types and cache hit rate for the last `days` days."
       }
     },
+    "/api/v1/analytics/tokens": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "OpenAI embedding tokens and estimated cost",
+        "operationId": "getTokenUsage",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenUsageResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "OpenAI embedding tokens for the last `days` days: uploads (INGEST) and queries (QUERY), daily totals, cache hits and an estimated cost."
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [
@@ -3551,6 +3642,11 @@
             "type": "integer",
             "title": "Latency Ms"
           },
+          "embedding_tokens": {
+            "type": "integer",
+            "title": "Embedding Tokens",
+            "description": "OpenAI tokens used for the whole batch."
+          },
           "request_id": {
             "type": "string",
             "title": "Request Id"
@@ -3561,6 +3657,7 @@
           "results",
           "query_ids",
           "latency_ms",
+          "embedding_tokens",
           "request_id"
         ],
         "title": "BatchRecommendResponse"
@@ -3769,6 +3866,30 @@
           "progress_percentage"
         ],
         "title": "CsvUploadResponse"
+      },
+      "DailyTokens": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date",
+            "description": "UTC date, YYYY-MM-DD."
+          },
+          "ingest_tokens": {
+            "type": "integer",
+            "title": "Ingest Tokens"
+          },
+          "query_tokens": {
+            "type": "integer",
+            "title": "Query Tokens"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "ingest_tokens",
+          "query_tokens"
+        ],
+        "title": "DailyTokens"
       },
       "DailyUsage": {
         "properties": {
@@ -4675,6 +4796,11 @@
             "type": "integer",
             "title": "Latency Ms"
           },
+          "embedding_tokens": {
+            "type": "integer",
+            "title": "Embedding Tokens",
+            "description": "OpenAI tokens used to embed this query (0 when served from cache)."
+          },
           "request_id": {
             "type": "string",
             "title": "Request Id"
@@ -4686,6 +4812,7 @@
           "total",
           "query_id",
           "latency_ms",
+          "embedding_tokens",
           "request_id"
         ],
         "title": "RecommendResponse"
@@ -4974,6 +5101,84 @@
           "top_k": 10
         }
       },
+      "TokenUsageResponse": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "title": "Total Tokens"
+          },
+          "by_source": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/UsageSource"
+            },
+            "type": "object",
+            "title": "By Source",
+            "description": "INGEST: embedding uploaded items. QUERY: embedding recommendation queries."
+          },
+          "api_calls": {
+            "type": "integer",
+            "title": "Api Calls",
+            "description": "Requests made to the OpenAI embeddings API."
+          },
+          "texts_embedded": {
+            "type": "integer",
+            "title": "Texts Embedded",
+            "description": "Texts sent for embedding, including cache hits."
+          },
+          "cache_hits": {
+            "type": "integer",
+            "title": "Cache Hits",
+            "description": "Texts served from the embedding cache (no tokens)."
+          },
+          "price_per_million_tokens": {
+            "type": "number",
+            "title": "Price Per Million Tokens",
+            "description": "USD, from server configuration."
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "title": "Estimated Cost Usd"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/DailyTokens"
+            },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "days",
+          "since",
+          "model",
+          "total_tokens",
+          "by_source",
+          "api_calls",
+          "texts_embedded",
+          "cache_hits",
+          "price_per_million_tokens",
+          "estimated_cost_usd",
+          "daily"
+        ],
+        "title": "TokenUsageResponse"
+      },
       "UsageResponse": {
         "properties": {
           "days": {
@@ -5034,6 +5239,14 @@
           "feedback_total"
         ],
         "title": "UsageResponse"
+      },
+      "UsageSource": {
+        "type": "string",
+        "enum": [
+          "INGEST",
+          "QUERY"
+        ],
+        "title": "UsageSource"
       },
       "ValidationError": {
         "properties": {

@@ -300,6 +300,29 @@ def test_connection_errors() -> None:
         client.analytics.overview()
 
 
+def test_token_usage() -> None:
+    body = {
+        "days": 7,
+        "since": "2026-09-18T00:00:00Z",
+        "model": "text-embedding-3-small",
+        "total_tokens": 1234,
+        "by_source": {"INGEST": 1000, "QUERY": 234},
+        "api_calls": 5,
+        "texts_embedded": 12,
+        "cache_hits": 3,
+        "price_per_million_tokens": 0.02,
+        "estimated_cost_usd": 0.000025,
+        "daily": [{"date": "2026-09-24", "ingest_tokens": 1000, "query_tokens": 234}],
+    }
+    recorder = Recorder(httpx.Response(200, json=body))
+    client, _ = make_client(recorder)
+    usage = client.analytics.tokens(days=7)
+    assert recorder.requests[0].url.path == "/api/v1/analytics/tokens"
+    assert recorder.requests[0].url.params["days"] == "7"
+    assert usage.total_tokens == 1234 and usage.by_source["QUERY"] == 234
+    assert usage.daily[0].ingest_tokens == 1000
+
+
 # ---------------------------------------------------------------- async client
 
 

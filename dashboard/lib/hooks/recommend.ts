@@ -11,6 +11,7 @@ import type {
   RecommendRequest,
   RecommendResponse,
   RecommendResult,
+  TokenUsage,
   UsageResponse,
 } from "@/types";
 
@@ -40,7 +41,16 @@ export const analyticsKeys = {
   overview: ["analytics", "overview"] as const,
   usage: (days: number) => ["analytics", "usage", days] as const,
   feedback: (days: number) => ["analytics", "feedback", days] as const,
+  tokens: (days: number) => ["analytics", "tokens", days] as const,
 };
+
+export function useTokenUsage(days = 30) {
+  return useQuery({
+    queryKey: analyticsKeys.tokens(days),
+    queryFn: async () => (await api.get<TokenUsage>("/analytics/tokens", { params: { days } })).data,
+    staleTime: FIVE_MINUTES,
+  });
+}
 
 export function useAnalytics() {
   return useQuery({

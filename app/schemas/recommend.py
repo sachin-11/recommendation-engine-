@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from app.models.item import EmbeddingStatus
 from app.models.recommendation_log import QueryType
+from app.models.token_usage import UsageSource
 from app.models.user_feedback import FeedbackType
 
 MAX_TOP_K = 100
@@ -96,6 +97,9 @@ class RecommendResponse(BaseModel):
     total: int
     query_id: uuid.UUID = Field(description="Send this back with feedback on a result.")
     latency_ms: int
+    embedding_tokens: int = Field(
+        description="OpenAI tokens used to embed this query (0 when served from cache)."
+    )
     request_id: str
 
 
@@ -136,6 +140,7 @@ class BatchRecommendResponse(BaseModel):
     results: dict[str, list[RecommendationOut]]
     query_ids: dict[str, uuid.UUID] = Field(description="Per query, for sending feedback.")
     latency_ms: int
+    embedding_tokens: int = Field(description="OpenAI tokens used for the whole batch.")
     request_id: str
 
 
@@ -203,6 +208,28 @@ class UsageResponse(BaseModel):
         description="Share of cacheable queries served from cache; null with no queries."
     )
     feedback_total: int
+
+
+class DailyTokens(BaseModel):
+    date: str = Field(description="UTC date, YYYY-MM-DD.")
+    ingest_tokens: int
+    query_tokens: int
+
+
+class TokenUsageResponse(BaseModel):
+    days: int
+    since: datetime
+    model: str
+    total_tokens: int
+    by_source: dict[UsageSource, int] = Field(
+        description="INGEST: embedding uploaded items. QUERY: embedding recommendation queries."
+    )
+    api_calls: int = Field(description="Requests made to the OpenAI embeddings API.")
+    texts_embedded: int = Field(description="Texts sent for embedding, including cache hits.")
+    cache_hits: int = Field(description="Texts served from the embedding cache (no tokens).")
+    price_per_million_tokens: float = Field(description="USD, from server configuration.")
+    estimated_cost_usd: float
+    daily: list[DailyTokens]
 
 
 class FeedbackSummary(BaseModel):

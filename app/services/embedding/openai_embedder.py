@@ -19,7 +19,8 @@ from tenacity import (
 )
 
 from app.core.config import settings
-from app.core.tracing import MAX_TRACED_TEXTS, add_run_metadata, clip, traced
+from app.core.tracing import MAX_TRACED_TEXTS, add_run_metadata, clip, set_run_usage, traced
+from app.core.usage import add_embedding_usage
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,9 @@ class OpenAIEmbedder:
             lambda: [truncate_to_tokens(text, self._max_tokens) for text in texts]
         )
         results = await self._cache_get([self._cache_key(text) for text in prepared])
-        add_run_metadata(cache_hits=sum(r is not None for r in results), model=self.model)
+        cache_hits = sum(r is not None for r in results)
+        add_run_metadata(cache_hits=cache_hits, model=self.model)
+        add_embedding_usage(texts=len(texts), cache_hits=cache_hits, model=self.model)
 
         # Embed each distinct uncached text once, even if it repeats within the batch.
         uncached = list(
@@ -162,6 +165,11 @@ class OpenAIEmbedder:
         except openai.APIError as exc:
             raise EmbeddingUnavailableError(f"OpenAI error: {exc}") from exc
 
+        usage = getattr(response, "usage", None)
+        tokens = int(getattr(usage, "total_tokens", 0) or 0)
+        add_embedding_usage(tokens=tokens, api_calls=1, model=self.model)
+        # Lets LangSmith show token counts and cost for this call.
+        set_run_usage(tokens, model=self.model)
         return [list(d.embedding) for d in sorted(response.data, key=lambda d: d.index)]
 
     # --- Cache ---

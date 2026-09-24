@@ -22,6 +22,11 @@ ITEMS = Gauge(
     "Items per tenant and embedding status (refreshed on each scrape).",
     ["tenant_id", "status"],
 )
+EMBEDDING_TOKENS = Counter(
+    "openai_embedding_tokens_total",
+    "OpenAI embedding tokens used.",
+    ["source", "model"],
+)
 EMBEDDING_PIPELINE_DURATION = Histogram(
     "embedding_pipeline_duration_seconds",
     "Time to embed and store one chunk of items.",

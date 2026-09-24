@@ -2,18 +2,49 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { BarChart3, Gauge, MessageSquareHeart, Sparkles, TrendingUp, Zap } from "lucide-react";
+import {
+  BarChart3,
+  Coins,
+  Gauge,
+  MessageSquareHeart,
+  Sparkles,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
 
 import { OverviewCards, type Stat } from "@/components/analytics/OverviewCards";
-import { FeedbackDonut, QueryTypeChart, RecommendationChart } from "@/components/analytics/RecommendationChart";
+import {
+  FeedbackDonut,
+  QueryTypeChart,
+  RecommendationChart,
+  TokenChart,
+} from "@/components/analytics/RecommendationChart";
 import { itemHref } from "@/components/items/ItemTable";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { NativeSelect } from "@/components/ui/input";
 import { EmptyState, PageHeader } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useAnalytics, useFeedbackSummary, useUsage } from "@/lib/hooks/recommend";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  useAnalytics,
+  useFeedbackSummary,
+  useTokenUsage,
+  useUsage,
+} from "@/lib/hooks/recommend";
 import { formatNumber } from "@/lib/utils";
 
 function ChartCard({
@@ -33,8 +64,68 @@ function ChartCard({
         <CardTitle className="text-base">{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
-      <CardContent>{loading ? <Skeleton className="h-[260px] w-full" /> : children}</CardContent>
+      <CardContent>
+        {loading ? <Skeleton className="h-[260px] w-full" /> : children}
+      </CardContent>
     </Card>
+  );
+}
+
+function formatUsd(value: number) {
+  if (value === 0) return "$0.00";
+  if (value < 0.000001) return "< $0.000001";
+  return value < 0.01 ? `$${value.toPrecision(2)}` : `$${value.toFixed(2)}`;
+}
+
+function TokenUsageSection({ days }: { days: number }) {
+  const tokens = useTokenUsage(days);
+  const data = tokens.data;
+  const stats: Stat[] = [
+    {
+      label: "Total tokens",
+      value: formatNumber(data?.total_tokens),
+      icon: Coins,
+      hint: data?.model ?? "OpenAI embeddings",
+    },
+    {
+      label: "Upload tokens",
+      value: formatNumber(data?.by_source.INGEST),
+      icon: BarChart3,
+      hint: `${formatNumber(data?.texts_embedded)} texts embedded`,
+    },
+    {
+      label: "Query tokens",
+      value: formatNumber(data?.by_source.QUERY),
+      icon: Sparkles,
+      hint: `${formatNumber(data?.api_calls)} OpenAI calls`,
+    },
+    {
+      label: "Estimated cost",
+      value: data ? formatUsd(data.estimated_cost_usd) : "—",
+      icon: TrendingUp,
+      hint: data
+        ? `$${data.price_per_million_tokens} per 1M tokens`
+        : undefined,
+    },
+  ];
+  return (
+    <section className="mt-8 space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">OpenAI token usage</h2>
+        <p className="text-sm text-muted-foreground">
+          Embedding tokens spent on uploads and queries. Cached embeddings (
+          {formatNumber(data?.cache_hits)} so far) cost nothing.
+        </p>
+      </div>
+      <OverviewCards stats={stats} loading={tokens.isLoading} />
+      <ChartCard
+        title="Daily tokens"
+        description={`Last ${days} days (UTC)`}
+        loading={tokens.isLoading}
+      >
+        {data && <TokenChart daily={data.daily} />}
+      </ChartCard>
+    </section>
   );
 }
 
@@ -54,7 +145,10 @@ export default function AnalyticsPage() {
     },
     {
       label: "Avg latency",
-      value: overview.data?.avg_latency_ms != null ? `${overview.data.avg_latency_ms} ms` : "—",
+      value:
+        overview.data?.avg_latency_ms != null
+          ? `${overview.data.avg_latency_ms} ms`
+          : "—",
       icon: Gauge,
       hint: "This month",
     },
@@ -80,9 +174,14 @@ export default function AnalyticsPage() {
     <>
       <PageHeader
         title="Analytics"
-        description="Query volume, latency, caching and what users think of the results."
+        description="Query volume, latency, caching, OpenAI tokens and what users think of the results."
         actions={
-          <NativeSelect value={days} onChange={(e) => setDays(Number(e.target.value))} className="w-36" aria-label="Period">
+          <NativeSelect
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="w-36"
+            aria-label="Period"
+          >
             <option value={7}>Last 7 days</option>
             <option value={30}>Last 30 days</option>
             <option value={90}>Last 90 days</option>
@@ -109,20 +208,39 @@ export default function AnalyticsPage() {
         <>
           <div className="mt-6 grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              <ChartCard title="Daily recommendation volume" description={`Last ${days} days (UTC)`} loading={loading}>
-                {usage.data && <RecommendationChart daily={usage.data.daily} variant="area" />}
+              <ChartCard
+                title="Daily recommendation volume"
+                description={`Last ${days} days (UTC)`}
+                loading={loading}
+              >
+                {usage.data && (
+                  <RecommendationChart
+                    daily={usage.data.daily}
+                    variant="area"
+                  />
+                )}
               </ChartCard>
             </div>
-            <ChartCard title="Query types" description="How results were requested" loading={loading}>
-              {usage.data && <QueryTypeChart byType={usage.data.by_query_type} />}
+            <ChartCard
+              title="Query types"
+              description="How results were requested"
+              loading={loading}
+            >
+              {usage.data && (
+                <QueryTypeChart byType={usage.data.by_query_type} />
+              )}
             </ChartCard>
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Most recommended items</CardTitle>
-                <CardDescription>Top result most often, this month</CardDescription>
+                <CardTitle className="text-base">
+                  Most recommended items
+                </CardTitle>
+                <CardDescription>
+                  Top result most often, this month
+                </CardDescription>
               </CardHeader>
               <CardContent className="px-0">
                 {overview.isLoading ? (
@@ -137,30 +255,45 @@ export default function AnalyticsPage() {
                       <TableRow className="hover:bg-transparent">
                         <TableHead className="pl-5">#</TableHead>
                         <TableHead>External ID</TableHead>
-                        <TableHead className="pr-5 text-right">Times recommended</TableHead>
+                        <TableHead className="pr-5 text-right">
+                          Times recommended
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {topItems.map((item, index) => (
                         <TableRow key={item.external_id}>
-                          <TableCell className="pl-5 text-muted-foreground">{index + 1}</TableCell>
+                          <TableCell className="pl-5 text-muted-foreground">
+                            {index + 1}
+                          </TableCell>
                           <TableCell>
-                            <Link href={itemHref(item.external_id)} className="font-mono text-xs hover:text-primary hover:underline">
+                            <Link
+                              href={itemHref(item.external_id)}
+                              className="font-mono text-xs hover:text-primary hover:underline"
+                            >
                               {item.external_id}
                             </Link>
                           </TableCell>
-                          <TableCell className="pr-5 text-right tabular-nums">{formatNumber(item.count)}</TableCell>
+                          <TableCell className="pr-5 text-right tabular-nums">
+                            {formatNumber(item.count)}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 ) : (
-                  <p className="px-5 text-sm text-muted-foreground">No results served this month yet.</p>
+                  <p className="px-5 text-sm text-muted-foreground">
+                    No results served this month yet.
+                  </p>
                 )}
               </CardContent>
             </Card>
 
-            <ChartCard title="Feedback" description={`By type, last ${days} days`} loading={feedback.isLoading}>
+            <ChartCard
+              title="Feedback"
+              description={`By type, last ${days} days`}
+              loading={feedback.isLoading}
+            >
               {feedback.data && feedback.data.total > 0 ? (
                 <FeedbackDonut byType={feedback.data.by_type} />
               ) : (
@@ -174,6 +307,8 @@ export default function AnalyticsPage() {
           </div>
         </>
       )}
+
+      <TokenUsageSection days={days} />
     </>
   );
 }

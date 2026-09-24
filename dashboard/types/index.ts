@@ -119,6 +119,8 @@ export interface RecommendResponse {
   total: number;
   query_id: string;
   latency_ms: number;
+  /** OpenAI tokens used to embed the query; 0 on cache hits and by-item queries. */
+  embedding_tokens: number;
   request_id: string;
 }
 
@@ -162,6 +164,20 @@ export interface UsageResponse {
   by_query_type: Record<QueryType, number>;
   cache_hit_rate: number | null;
   feedback_total: number;
+}
+
+export interface TokenUsage {
+  days: number;
+  since: string;
+  model: string;
+  total_tokens: number;
+  by_source: { INGEST: number; QUERY: number };
+  api_calls: number;
+  texts_embedded: number;
+  cache_hits: number;
+  price_per_million_tokens: number;
+  estimated_cost_usd: number;
+  daily: { date: string; ingest_tokens: number; query_tokens: number }[];
 }
 
 export interface FeedbackSummary {

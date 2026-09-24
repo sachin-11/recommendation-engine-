@@ -29,6 +29,7 @@ def build_log(
         latency_ms=latency_ms,
         filters_applied=recommendation.filters,
         cache_status=recommendation.cache_status,
+        embedding_tokens=recommendation.embedding_tokens,
     )
 
 

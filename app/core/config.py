@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = Field(default=1536, gt=0)
     EMBEDDING_MAX_TOKENS: int = Field(default=8000, gt=0)
     EMBEDDING_CACHE_TTL_SECONDS: int = Field(default=24 * 60 * 60, gt=0)
+    # USD per 1M tokens, for the cost estimate in analytics (text-embedding-3-small: 0.02).
+    EMBEDDING_PRICE_PER_MILLION_TOKENS: float = Field(default=0.02, ge=0)
 
     # --- Pinecone ---
     PINECONE_API_KEY: SecretStr | None = None

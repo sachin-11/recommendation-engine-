@@ -1,5 +1,5 @@
 import type { RecoEngineClient } from "../client";
-import type { FeedbackSummary, OverviewStats, UsageStats } from "../types";
+import type { FeedbackSummary, OverviewStats, TokenUsage, UsageStats } from "../types";
 
 export class Analytics {
   constructor(private readonly client: RecoEngineClient) {}
@@ -24,6 +24,16 @@ export class Analytics {
     const response = await this.client.request<UsageStats>({
       method: "GET",
       url: "/analytics/usage",
+      params: { days: options.days },
+    });
+    return response.data;
+  }
+
+  /** OpenAI embedding tokens and estimated cost for the last `days` days (default 30). */
+  async tokens(options: { days?: number } = {}): Promise<TokenUsage> {
+    const response = await this.client.request<TokenUsage>({
+      method: "GET",
+      url: "/analytics/tokens",
       params: { days: options.days },
     });
     return response.data;

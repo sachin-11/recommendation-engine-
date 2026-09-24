@@ -70,6 +70,8 @@ async def main() -> None:
     async with AsyncRecoEngineClient() as client:
         results = await client.recommend.by_text("spicy vegetarian pasta", top_k=5)
         overview = await client.analytics.overview()
+        tokens = await client.analytics.tokens(days=30)
+        print(tokens.total_tokens, tokens.estimated_cost_usd)
 
 asyncio.run(main())
 ```

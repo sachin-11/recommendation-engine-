@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from recoengine.models import FeedbackSummary, OverviewStats, UsageStats
+from recoengine.models import FeedbackSummary, OverviewStats, TokenUsage, UsageStats
 
 if TYPE_CHECKING:
     from recoengine.client import AsyncRecoEngineClient, RecoEngineClient
@@ -30,6 +30,11 @@ class Analytics:
         response = self._client._request("GET", "/analytics/usage", params={"days": days})
         return UsageStats.model_validate(response.json())
 
+    def tokens(self, *, days: int = 30) -> TokenUsage:
+        """OpenAI embedding tokens and estimated cost for the last ``days`` days."""
+        response = self._client._request("GET", "/analytics/tokens", params={"days": days})
+        return TokenUsage.model_validate(response.json())
+
 
 class AsyncAnalytics:
     def __init__(self, client: AsyncRecoEngineClient) -> None:
@@ -48,3 +53,8 @@ class AsyncAnalytics:
     async def usage(self, *, days: int = 30) -> UsageStats:
         response = await self._client._request("GET", "/analytics/usage", params={"days": days})
         return UsageStats.model_validate(response.json())
+
+    async def tokens(self, *, days: int = 30) -> TokenUsage:
+        """OpenAI embedding tokens and estimated cost for the last ``days`` days."""
+        response = await self._client._request("GET", "/analytics/tokens", params={"days": days})
+        return TokenUsage.model_validate(response.json())

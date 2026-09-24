@@ -5,7 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from app.api.v1.items import AUTH_RESPONSES, PROTECTED
-from app.schemas.recommend import AnalyticsOverview, FeedbackSummary, UsageResponse
+from app.schemas.recommend import (
+    AnalyticsOverview,
+    FeedbackSummary,
+    TokenUsageResponse,
+    UsageResponse,
+)
 from app.services.analytics_service import AnalyticsServiceDep
 
 router = APIRouter(
@@ -30,3 +35,10 @@ async def usage(
     service: AnalyticsServiceDep, days: Annotated[int, Query(ge=1, le=90)] = 30
 ) -> UsageResponse:
     return UsageResponse.model_validate(await service.usage(days))
+
+
+@router.get("/tokens", summary="OpenAI embedding tokens and estimated cost")
+async def tokens(
+    service: AnalyticsServiceDep, days: Annotated[int, Query(ge=1, le=365)] = 30
+) -> TokenUsageResponse:
+    return TokenUsageResponse.model_validate(await service.tokens(days))

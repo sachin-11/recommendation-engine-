@@ -22,9 +22,11 @@ from app.core.exceptions import (
     ServiceUnavailableError,
 )
 from app.core.tracing import clip, traced
+from app.core.usage import track_embedding_usage
 from app.models.item import EmbeddingStatus, Item
 from app.models.recommendation_log import QueryType
 from app.models.tenant import Tenant
+from app.models.token_usage import UsageSource
 from app.services.embedding.openai_embedder import (
     EmbeddingInputError,
     EmbeddingUnavailableError,
@@ -41,6 +43,7 @@ from app.services.embedding.text_builder import TextBuilder
 from app.services.recommendation.cache import RecommendationCache
 from app.services.recommendation.filter_builder import FilterBuilder
 from app.services.recommendation.result_formatter import ResultFormatter
+from app.services.token_usage import record_embedding_usage
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +60,8 @@ class Recommendation:
     filters: dict[str, Any]
     results: list[dict[str, Any]]
     cache_status: CacheStatus
+    # OpenAI tokens spent embedding this query (0 on cache hits and by-item queries).
+    embedding_tokens: int = 0
 
 
 @dataclass
@@ -114,6 +119,7 @@ def _trace_inputs(**fields: str) -> Any:
 def _trace_recommendation(rec: Recommendation) -> dict[str, Any]:
     return {
         "cache": rec.cache_status,
+        "embedding_tokens": rec.embedding_tokens,
         "results": [
             {
                 "rank": r["rank"],
@@ -259,17 +265,28 @@ class QueryEngine:
         misses = [q for q in queries if q.id not in hits]
 
         fresh: dict[str, list[dict[str, Any]]] = {}
+        query_tokens: dict[str, int] = {}
         if misses:
-            with _upstream_errors():
-                vectors = await self._embedder.embed_batch([q.query for q in misses])
-                all_matches = await asyncio.gather(
-                    *(
-                        self._vector_store.query(
-                            tenant.id, top_k=top_k, vector=vector, filter=pinecone_filters[q.id]
+            with track_embedding_usage() as usage:
+                try:
+                    with _upstream_errors():
+                        vectors = await self._embedder.embed_batch([q.query for q in misses])
+                        all_matches = await asyncio.gather(
+                            *(
+                                self._vector_store.query(
+                                    tenant.id,
+                                    top_k=top_k,
+                                    vector=vector,
+                                    filter=pinecone_filters[q.id],
+                                )
+                                for q, vector in zip(misses, vectors, strict=True)
+                            )
                         )
-                        for q, vector in zip(misses, vectors, strict=True)
-                    )
-                )
+                finally:
+                    await record_embedding_usage(self._session, tenant.id, UsageSource.QUERY, usage)
+            # One OpenAI call covers all misses; split its tokens so the parts add up.
+            base, extra = divmod(usage.tokens, len(misses))
+            query_tokens = {q.id: base + (i < extra) for i, q in enumerate(misses)}
             for query, matches in zip(misses, all_matches, strict=True):
                 fresh[query.id] = self._formatter.format_results(matches, tenant)
             await asyncio.gather(*(self._cache.set(keys[q_id], r) for q_id, r in fresh.items()))
@@ -281,6 +298,7 @@ class QueryEngine:
                 filters=q.filters or {},
                 results=hits[q.id] if q.id in hits else fresh[q.id],
                 cache_status="HIT" if q.id in hits else "MISS",
+                embedding_tokens=query_tokens.get(q.id, 0),
             )
             for q in queries
         }
@@ -299,8 +317,10 @@ class QueryEngine:
     ) -> Recommendation:
         pinecone_filter = self._filter_builder.build_pinecone_filter(filters, tenant.domain_config)
 
-        def done(results: list[dict[str, Any]], status: CacheStatus) -> Recommendation:
-            return Recommendation(query_type, query_input, filters or {}, results, status)
+        def done(
+            results: list[dict[str, Any]], status: CacheStatus, tokens: int = 0
+        ) -> Recommendation:
+            return Recommendation(query_type, query_input, filters or {}, results, status, tokens)
 
         # raw_data can be large and changes often; those responses are never cached.
         key = None
@@ -311,15 +331,20 @@ class QueryEngine:
             if (cached := await self._cache.get(key)) is not None:
                 return done(cached, "HIT")
 
-        with _upstream_errors():
-            matches = await search(pinecone_filter)
+        with track_embedding_usage() as usage:
+            try:
+                with _upstream_errors():
+                    matches = await search(pinecone_filter)
+            finally:
+                # Tokens spent before a Pinecone failure still count.
+                await record_embedding_usage(self._session, tenant.id, UsageSource.QUERY, usage)
 
         raw_data = await self._raw_data(tenant, matches) if include_raw_data else None
         results = self._formatter.format_results(matches, tenant, include_raw_data, raw_data)
         if key is None:
-            return done(results, "BYPASS")
+            return done(results, "BYPASS", usage.tokens)
         await self._cache.set(key, results)
-        return done(results, "MISS")
+        return done(results, "MISS", usage.tokens)
 
     async def _search_text(
         self, text: str, tenant: Tenant, top_k: int, pinecone_filter: dict[str, Any]

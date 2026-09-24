@@ -107,3 +107,6 @@ async def test_recommendation_is_traced_without_vectors(
     # A vector is 8 floats in tests (1536 in production); none may appear in a trace.
     assert not re.search(r"\[(?:0\.\d+, ){7}0\.\d+\]", payloads)
     assert "'dimensions': 8" in payloads
+    # Token usage is reported on the OpenAI call, so LangSmith can show tokens and cost.
+    assert "'total_tokens':" in payloads
+    assert "'ls_model_name': 'text-embedding-3-small'" in payloads

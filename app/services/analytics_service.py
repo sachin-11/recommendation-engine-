@@ -8,11 +8,13 @@ from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.middleware.auth import AuthDep
 from app.models.item import EmbeddingStatus, Item
 from app.models.recommendation_log import QueryType, RecommendationLog
 from app.models.tenant import Tenant
+from app.models.token_usage import TokenUsage, UsageSource
 from app.models.user_feedback import FeedbackType, UserFeedback
 
 TOP_ITEMS_LIMIT = 10
@@ -122,6 +124,56 @@ class AnalyticsService:
             "by_query_type": by_type,
             "cache_hit_rate": round(cache.get("HIT", 0) / cacheable, 4) if cacheable else None,
             "feedback_total": feedback or 0,
+        }
+
+    async def tokens(self, days: int = 30) -> dict[str, Any]:
+        """OpenAI embedding tokens for the last `days` UTC days, by source and by day."""
+        today = datetime.now(UTC).date()
+        first_day = today - timedelta(days=days - 1)
+        rows = (
+            await self._session.execute(
+                select(TokenUsage).where(
+                    TokenUsage.tenant_id == self._tenant.id, TokenUsage.day >= first_day
+                )
+            )
+        ).scalars()
+        by_source = {source: 0 for source in UsageSource}
+        per_day: dict[str, dict[UsageSource, int]] = {}
+        api_calls = texts = cache_hits = 0
+        models: set[str] = set()
+        for row in rows:
+            by_source[row.source] += row.tokens
+            day = per_day.setdefault(row.day.isoformat(), {s: 0 for s in UsageSource})
+            day[row.source] += row.tokens
+            api_calls += row.api_calls
+            texts += row.texts
+            cache_hits += row.cache_hits
+            models.add(row.model)
+        total = sum(by_source.values())
+        price = settings.EMBEDDING_PRICE_PER_MILLION_TOKENS
+        daily = []
+        for offset in range(days):
+            date = (first_day + timedelta(days=offset)).isoformat()
+            day = per_day.get(date, {s: 0 for s in UsageSource})
+            daily.append(
+                {
+                    "date": date,
+                    "ingest_tokens": day[UsageSource.INGEST],
+                    "query_tokens": day[UsageSource.QUERY],
+                }
+            )
+        return {
+            "days": days,
+            "since": datetime.combine(first_day, datetime.min.time(), tzinfo=UTC),
+            "model": ", ".join(sorted(models)) or settings.EMBEDDING_MODEL,
+            "total_tokens": total,
+            "by_source": by_source,
+            "api_calls": api_calls,
+            "texts_embedded": texts,
+            "cache_hits": cache_hits,
+            "price_per_million_tokens": price,
+            "estimated_cost_usd": round(total * price / 1_000_000, 10),
+            "daily": daily,
         }
 
     async def _top(

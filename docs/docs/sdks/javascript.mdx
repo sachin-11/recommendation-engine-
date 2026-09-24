@@ -66,6 +66,7 @@ console.log(byText.cache, byText.latency_ms); // "HIT" | "MISS" | …, milliseco
 const overview = await client.analytics.overview();
 const feedback = await client.analytics.feedbackSummary({ days: 30 });
 const usage = await client.analytics.usage({ days: 7 });
+const tokens = await client.analytics.tokens({ days: 30 }); // OpenAI tokens + estimated cost
 ```
 
 ## Errors and retries
