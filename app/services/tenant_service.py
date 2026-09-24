@@ -64,6 +64,7 @@ class TenantService:
             name=data.name,
             key_hash=generated.key_hash,
             key_prefix=generated.key_prefix,
+            expires_at=data.expires_at,
         )
         self._session.add(api_key)
         await self._session.commit()

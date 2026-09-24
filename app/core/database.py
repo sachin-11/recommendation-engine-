@@ -6,7 +6,12 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.config import settings
 
@@ -24,11 +29,18 @@ def _engine_options(url: str) -> dict[str, Any]:
     return options
 
 
-engine: AsyncEngine = create_async_engine(settings.DATABASE_URL, **_engine_options(settings.DATABASE_URL))
+engine: AsyncEngine = create_async_engine(
+    settings.DATABASE_URL, **_engine_options(settings.DATABASE_URL)
+)
 
 AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
 )
+
+
+def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """Session factory for work that outlives the request (background tasks)."""
+    return AsyncSessionLocal
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:

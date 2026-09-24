@@ -1,10 +1,11 @@
 """Tenant, domain-config and API-key request/response schemas."""
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Self
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     EmailStr,
@@ -147,6 +148,16 @@ class ApiKeyCreate(BaseModel):
     name: Annotated[NonBlankStr, StringConstraints(max_length=100)] = Field(
         description="Human-readable label, e.g. 'production-backend'."
     )
+    expires_at: AwareDatetime | None = Field(
+        default=None, description="Optional expiry. The key is rejected after this time."
+    )
+
+    @field_validator("expires_at")
+    @classmethod
+    def _expiry_in_future(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value <= datetime.now(UTC):
+            raise ValueError("expires_at must be in the future")
+        return value
 
 
 class ApiKeyResponse(BaseModel):
@@ -159,6 +170,7 @@ class ApiKeyResponse(BaseModel):
     key_prefix: str
     is_active: bool
     last_used_at: datetime | None
+    expires_at: datetime | None
     created_at: datetime
 
     @computed_field  # type: ignore[prop-decorator]

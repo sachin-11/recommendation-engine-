@@ -59,6 +59,29 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    # Retries items left PENDING (e.g. while OpenAI was down) and drains large backlogs.
+    command: ["python", "-m", "app.workers.embedding_worker"]
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:

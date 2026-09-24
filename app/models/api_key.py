@@ -26,6 +26,7 @@ class ApiKey(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         Boolean, nullable=False, default=True, server_default=true()
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="api_keys", lazy="raise")
 

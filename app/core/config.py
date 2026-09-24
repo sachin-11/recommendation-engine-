@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _SUPPORTED_DB_SCHEMES = ("postgresql+asyncpg://", "sqlite+aiosqlite://")
@@ -28,11 +28,38 @@ class Settings(BaseSettings):
     # --- Redis ---
     REDIS_URL: str
 
-    # --- AI / vector providers (consumed from Module 2 onwards) ---
+    # --- OpenAI embeddings ---
     OPENAI_API_KEY: SecretStr | None = None
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    # OPENAI_EMBEDDING_MODEL is the name used before Module 2; still accepted.
+    EMBEDDING_MODEL: str = Field(
+        default="text-embedding-3-small",
+        validation_alias=AliasChoices("EMBEDDING_MODEL", "OPENAI_EMBEDDING_MODEL"),
+    )
+    EMBEDDING_DIMENSION: int = Field(default=1536, gt=0)
+    EMBEDDING_MAX_TOKENS: int = Field(default=8000, gt=0)
+    EMBEDDING_CACHE_TTL_SECONDS: int = Field(default=24 * 60 * 60, gt=0)
+
+    # --- Pinecone ---
     PINECONE_API_KEY: SecretStr | None = None
-    PINECONE_ENVIRONMENT: str | None = None
+    # Region and cloud for serverless indexes, e.g. us-east-1 on aws.
+    PINECONE_ENVIRONMENT: str = "us-east-1"
+    PINECONE_CLOUD: Literal["aws", "gcp", "azure"] = "aws"
+
+    # --- Ingestion ---
+    MAX_ITEMS_PER_REQUEST: int = Field(default=1000, gt=0)
+    MAX_SYNC_ITEMS: int = Field(default=50, gt=0)
+    MAX_CSV_ITEMS: int = Field(default=10_000, gt=0)
+    MAX_CSV_BYTES: int = Field(default=10 * 1024 * 1024, gt=0)
+
+    # --- Rate limiting ---
+    RATE_LIMIT_RPM: int = Field(default=100, gt=0)
+    DAILY_ITEM_LIMIT: int = Field(default=10_000, gt=0)
+
+    # --- Embedding worker ---
+    WORKER_POLL_INTERVAL_SECONDS: float = Field(default=2.0, gt=0)
+    WORKER_CHUNK_SIZE: int = Field(default=100, gt=0)
+    # Items stuck in PROCESSING longer than this (a crashed worker) are retried.
+    WORKER_STALE_AFTER_SECONDS: int = Field(default=600, gt=0)
 
     # --- Security ---
     SECRET_KEY: SecretStr = Field(min_length=32)
@@ -48,6 +75,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"DATABASE_URL must use an async driver, one of: {', '.join(_SUPPORTED_DB_SCHEMES)}"
             )
+        return value
+
+    @field_validator("OPENAI_API_KEY", "PINECONE_API_KEY", mode="before")
+    @classmethod
+    def _blank_key_is_unset(cls, value: object) -> object:
+        # `OPENAI_API_KEY=` in .env means "not configured", not an empty key.
+        if isinstance(value, str) and (not value.strip() or _PLACEHOLDER_MARKER in value):
+            return None
         return value
 
     @field_validator("ALLOWED_ORIGINS", mode="before")

@@ -16,6 +16,9 @@ dependencies = [
     "redis (>=5.2)",
     "openai (>=1.55)",
     "pinecone (>=5.4)",
+    "tenacity (>=9.0)",
+    "tiktoken (>=0.8)",
+    "python-multipart (>=0.0.20)",
 ]
 
 [tool.poetry]

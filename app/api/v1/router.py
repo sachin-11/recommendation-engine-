@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, status
 
+from app.api.v1.items import index_router, items_router
 from app.schemas.common import ERROR_RESPONSES, ErrorResponse
 from app.schemas.tenant import (
     ApiKeyCreate,
@@ -62,8 +63,12 @@ async def list_api_keys(tenant_id: uuid.UUID, service: TenantServiceDep) -> list
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke an API key",
 )
-async def revoke_api_key(tenant_id: uuid.UUID, key_id: uuid.UUID, service: TenantServiceDep) -> None:
+async def revoke_api_key(
+    tenant_id: uuid.UUID, key_id: uuid.UUID, service: TenantServiceDep
+) -> None:
     await service.revoke_api_key(tenant_id, key_id)
 
 
 api_router.include_router(tenants_router)
+api_router.include_router(items_router)
+api_router.include_router(index_router)
