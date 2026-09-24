@@ -120,6 +120,19 @@ class FakeVectorStore:
         self.indexes.get(index_name_for(tenant_id), {}).pop(pinecone_id, None)
         return True
 
+    async def delete_items(self, tenant_id: uuid.UUID | str, pinecone_ids: list[str]) -> bool:
+        if self.unavailable:
+            raise VectorStoreUnavailableError("Pinecone is down (fake)")
+        index = self.indexes.get(index_name_for(tenant_id), {})
+        for pinecone_id in pinecone_ids:
+            index.pop(pinecone_id, None)
+        return True
+
+    async def delete_index(self, tenant_id: uuid.UUID | str) -> None:
+        if self.unavailable:
+            raise VectorStoreUnavailableError("Pinecone is down (fake)")
+        self.indexes.pop(index_name_for(tenant_id), None)
+
     async def get_index_stats(self, tenant_id: uuid.UUID | str) -> dict[str, Any]:
         if self.unavailable:
             raise VectorStoreUnavailableError("Pinecone is down (fake)")

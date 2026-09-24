@@ -22,7 +22,7 @@ class TenantService:
 
     # --- Tenants ---
 
-    async def create_tenant(self, data: TenantCreate) -> Tenant:
+    async def create_tenant(self, data: TenantCreate, password_hash: str | None = None) -> Tenant:
         if await self._email_exists(data.email):
             raise ConflictError(f"A tenant with email '{data.email}' already exists")
 
@@ -31,6 +31,7 @@ class TenantService:
             email=data.email,
             domain_type=data.domain_type,
             domain_config=data.resolved_domain_config().model_dump(mode="json"),
+            password_hash=password_hash,
         )
         self._session.add(tenant)
         try:

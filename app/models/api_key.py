@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, true
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, CreatedAtMixin, UUIDPrimaryKeyMixin
@@ -27,6 +27,10 @@ class ApiKey(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Short-lived keys issued by dashboard login; hidden from the API key list.
+    is_session: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     tenant: Mapped["Tenant"] = relationship(back_populates="api_keys", lazy="raise")
 

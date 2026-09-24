@@ -12,8 +12,11 @@ import contextlib
 import logging
 import signal
 
+from prometheus_client import start_http_server
+
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
+from app.core.logging import configure_sentry
 from app.core.redis_client import create_redis_client
 from app.services.embedding.openai_embedder import OpenAIEmbedder, get_openai_client
 from app.services.embedding.pinecone_service import get_pinecone_service
@@ -31,6 +34,9 @@ ERROR_BACKOFF_SECONDS = 10.0
 
 
 async def run(stop: asyncio.Event) -> None:
+    configure_sentry("worker")
+    if settings.WORKER_METRICS_PORT:
+        start_http_server(settings.WORKER_METRICS_PORT)
     redis = await create_redis_client()
     pipeline = EmbeddingPipeline(
         AsyncSessionLocal, OpenAIEmbedder(get_openai_client(), redis), get_pinecone_service()

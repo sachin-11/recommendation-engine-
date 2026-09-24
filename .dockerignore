@@ -1,10 +1,21 @@
 .git
+.github
 .venv
 venv
 .env
+.env.*
+!.env.example
+!.env.production.example
 **/__pycache__
 **/*.pyc
 .pytest_cache
 .ruff_cache
 .mypy_cache
 htmlcov
+# Separate projects with their own images or packages.
+dashboard
+docs
+sdk
+nginx
+monitoring
+backups

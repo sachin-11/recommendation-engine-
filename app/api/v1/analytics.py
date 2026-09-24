@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from app.api.v1.items import AUTH_RESPONSES, PROTECTED
-from app.schemas.recommend import AnalyticsOverview, FeedbackSummary
+from app.schemas.recommend import AnalyticsOverview, FeedbackSummary, UsageResponse
 from app.services.analytics_service import AnalyticsServiceDep
 
 router = APIRouter(
@@ -23,3 +23,10 @@ async def feedback_summary(
     service: AnalyticsServiceDep, days: Annotated[int, Query(ge=1, le=365)] = 30
 ) -> FeedbackSummary:
     return FeedbackSummary.model_validate(await service.feedback_summary(days))
+
+
+@router.get("/usage", summary="Daily volume, query types and cache hit rate")
+async def usage(
+    service: AnalyticsServiceDep, days: Annotated[int, Query(ge=1, le=90)] = 30
+) -> UsageResponse:
+    return UsageResponse.model_validate(await service.usage(days))

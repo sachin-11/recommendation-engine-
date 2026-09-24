@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "recoengine"
+version = "0.1.0"
+description = "Official Python client for the RecoEngine recommendation API"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "RecoEngine" }]
+requires-python = ">=3.9"
+dependencies = [
+    "httpx>=0.25,<1.0",
+    "pydantic>=2.5,<3.0",
+]
+keywords = ["recommendations", "recommendation-engine", "embeddings", "vector-search", "sdk"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "mypy>=1.8", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://recoengine.io"
+Documentation = "https://docs.recoengine.io/docs/sdks/python"
+Source = "https://github.com/sachin-11/recommendation-engine-"
+
+[tool.hatch.build.targets.wheel]
+packages = ["recoengine"]
+
+[tool.hatch.build.targets.sdist]
+include = ["recoengine", "tests", "README.md", "LICENSE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+# Pydantic evaluates model annotations at runtime; keep Optional/List for Python 3.9.
+ignore = ["UP006", "UP007", "UP035", "UP045"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]

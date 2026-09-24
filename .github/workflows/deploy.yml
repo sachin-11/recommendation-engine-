@@ -1,0 +1,128 @@
+name: Deploy
+
+# Builds both images, pushes them to ECR, deploys to the EC2 host and verifies /health.
+#
+# Repository secrets:
+#   AWS_DEPLOY_ROLE_ARN  IAM role for GitHub OIDC with ECR push rights
+#   ECR_REGISTRY         e.g. 123456789012.dkr.ecr.us-east-1.amazonaws.com
+#   DEPLOY_HOST          server IP or hostname
+#   DEPLOY_USER          SSH user (e.g. ubuntu)
+#   DEPLOY_SSH_KEY       private key for DEPLOY_USER
+#   SLACK_WEBHOOK_URL    optional; incoming webhook for notifications
+# Repository variables:
+#   AWS_REGION           default us-east-1
+#   DEPLOY_PATH          checkout on the server, default /home/ubuntu/recoengine
+#   PUBLIC_URL           e.g. https://recoengine.example.com (used for the health check)
+#   NEXT_PUBLIC_API_BASE_URL / NEXT_PUBLIC_DOCS_URL   baked into the dashboard image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          push: true
+          tags: |
+            ${{ secrets.ECR_REGISTRY }}/recoengine-backend:${{ env.IMAGE_TAG }}
+            ${{ secrets.ECR_REGISTRY }}/recoengine-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Dashboard
+        uses: docker/build-push-action@v6
+        with:
+          context: dashboard
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+            NEXT_PUBLIC_DOCS_URL=${{ vars.NEXT_PUBLIC_DOCS_URL }}
+          tags: |
+            ${{ secrets.ECR_REGISTRY }}/recoengine-dashboard:${{ env.IMAGE_TAG }}
+            ${{ secrets.ECR_REGISTRY }}/recoengine-dashboard:latest
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,mode=max,scope=dashboard
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Pull images, migrate, restart
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: IMAGE_TAG,AWS_REGION
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "${{ vars.DEPLOY_PATH || '/home/ubuntu/recoengine' }}"
+            git fetch --quiet origin main && git reset --quiet --hard "${{ github.sha }}"
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login --username AWS --password-stdin "${{ secrets.ECR_REGISTRY }}"
+            export IMAGE_TAG
+            compose="docker compose -f docker-compose.prod.yml --env-file .env.production"
+            $compose pull app worker dashboard
+            $compose run --rm migrate
+            $compose up -d --remove-orphans
+            for i in $(seq 1 30); do
+              if curl -fsS http://localhost/health >/dev/null; then echo "healthy"; exit 0; fi
+              sleep 5
+            done
+            echo "API did not become healthy"; $compose logs --tail 100 app; exit 1
+
+      - name: Health check from outside
+        run: |
+          url="${{ vars.PUBLIC_URL || format('http://{0}', secrets.DEPLOY_HOST) }}/health"
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url" || true)
+            [ "$code" = "200" ] && { echo "$url -> 200"; exit 0; }
+            echo "attempt $i: $code"; sleep 5
+          done
+          echo "::error::$url did not return 200"; exit 1
+
+  notify:
+    name: Slack notification
+    needs: [build, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post result
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RESULT: ${{ needs.deploy.result == 'success' && 'succeeded' || 'FAILED' }}
+          ICON: ${{ needs.deploy.result == 'success' && ':white_check_mark:' || ':x:' }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then echo "SLACK_WEBHOOK_URL not set; skipping"; exit 0; fi
+          text="$ICON RecoEngine deploy $RESULT: ${GITHUB_SHA::7} by $GITHUB_ACTOR (<$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID|run>)"
+          curl -fsS -X POST -H 'Content-type: application/json' \
+            --data "$(jq -n --arg text "$text" '{text: $text}')" "$SLACK_WEBHOOK_URL"

@@ -67,6 +67,11 @@ class Settings(BaseSettings):
 
     # --- Operational ---
     HEALTH_CHECK_TIMEOUT_SECONDS: float = Field(default=2.0, gt=0)
+    # Port for the worker's Prometheus metrics; 0 disables them.
+    WORKER_METRICS_PORT: int = Field(default=9100, ge=0, le=65535)
+    # Error tracking. Leave empty to disable.
+    SENTRY_DSN: SecretStr | None = None
+    SENTRY_TRACES_SAMPLE_RATE: float = Field(default=0.0, ge=0, le=1)
 
     @field_validator("DATABASE_URL")
     @classmethod
@@ -77,7 +82,7 @@ class Settings(BaseSettings):
             )
         return value
 
-    @field_validator("OPENAI_API_KEY", "PINECONE_API_KEY", mode="before")
+    @field_validator("OPENAI_API_KEY", "PINECONE_API_KEY", "SENTRY_DSN", mode="before")
     @classmethod
     def _blank_key_is_unset(cls, value: object) -> object:
         # `OPENAI_API_KEY=` in .env means "not configured", not an empty key.
@@ -120,7 +125,7 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]  # values come from the environment
+    return Settings()  # values come from the environment
 
 
 settings = get_settings()

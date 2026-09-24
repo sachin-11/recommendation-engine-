@@ -1,0 +1,316 @@
+---
+sidebar_position: 2
+title: Food domain
+description: Suggest similar dishes and match cravings.
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+{/* Generated from real API runs; see the note under each query. */}
+
+# Food domain
+
+Use this setup for food delivery, restaurant menus and recipe apps: "more like this" on a dish page, craving search ("something spicy and cheesy"), and dietary-aware suggestions.
+
+## Recommended domain config
+
+```json
+{
+  "primary_embedding_field": "description",
+  "searchable_fields": [
+    "name",
+    "description",
+    "cuisine",
+    "ingredients"
+  ],
+  "filter_fields": [
+    "cuisine",
+    "is_vegetarian",
+    "price_range"
+  ],
+  "item_label": "dish"
+}
+```
+
+Register with it (or set it later on the dashboard's **Settings** page, or with `PUT /me/domain-config`):
+
+```bash
+curl -X POST $RECO_API/api/v1/auth/register -H "Content-Type: application/json" -d '{
+  "name": "Acme", "email": "you@acme.com", "password": "a-strong-password",
+  "domain_type": "FOOD",
+  "domain_config": {"primary_embedding_field": "description", "searchable_fields": ["name", "description", "cuisine", "ingredients"], "filter_fields": ["cuisine", "is_vegetarian", "price_range"], "item_label": "dish"}
+}'
+```
+
+Why these fields:
+
+- `description` carries taste and texture ("fiery", "creamy", "smoky"), which is what cravings are made of.
+- `name`, `cuisine` and `ingredients` add strong signals for dish-to-dish similarity.
+- `is_vegetarian` is a boolean filter; `price_range` and `cuisine` are exact or any-of filters.
+
+## Sample items
+
+Ten items in the shape this config expects. Upload them with `POST /items/upload` (`"items": [...]`).
+
+```json
+[
+  {
+    "external_id": "dish-1",
+    "name": "Penne Arrabbiata",
+    "description": "Penne in a fiery tomato, garlic and red chilli sauce.",
+    "cuisine": "Italian",
+    "ingredients": [
+      "penne",
+      "tomato",
+      "chilli",
+      "garlic"
+    ],
+    "is_vegetarian": true,
+    "price_range": "$$"
+  },
+  {
+    "external_id": "dish-2",
+    "name": "Paneer Tikka",
+    "description": "Smoky char-grilled cottage cheese marinated in spiced yogurt.",
+    "cuisine": "North Indian",
+    "ingredients": [
+      "paneer",
+      "yogurt",
+      "kashmiri chilli"
+    ],
+    "is_vegetarian": true,
+    "price_range": "$$"
+  },
+  {
+    "external_id": "dish-3",
+    "name": "Chilli Garlic Noodles",
+    "description": "Wok-tossed noodles with burnt garlic and hot chilli oil.",
+    "cuisine": "Indo-Chinese",
+    "ingredients": [
+      "noodles",
+      "garlic",
+      "chilli oil"
+    ],
+    "is_vegetarian": true,
+    "price_range": "$"
+  },
+  {
+    "external_id": "dish-4",
+    "name": "Butter Chicken",
+    "description": "Tandoori chicken in a mild, creamy tomato gravy.",
+    "cuisine": "North Indian",
+    "ingredients": [
+      "chicken",
+      "butter",
+      "cream",
+      "tomato"
+    ],
+    "is_vegetarian": false,
+    "price_range": "$$"
+  },
+  {
+    "external_id": "dish-5",
+    "name": "Pasta Aglio e Olio",
+    "description": "Spaghetti with olive oil, sliced garlic and red chilli flakes.",
+    "cuisine": "Italian",
+    "ingredients": [
+      "spaghetti",
+      "olive oil",
+      "garlic",
+      "chilli flakes"
+    ],
+    "is_vegetarian": true,
+    "price_range": "$"
+  },
+  {
+    "external_id": "dish-6",
+    "name": "Margherita Pizza",
+    "description": "Wood-fired pizza with tomato, mozzarella and basil.",
+    "cuisine": "Italian",
+    "ingredients": [
+      "mozzarella",
+      "tomato",
+      "basil"
+    ],
+    "is_vegetarian": true,
+    "price_range": "$$"
+  },
+  {
+    "external_id": "dish-7",
+    "name": "Laal Maas",
+    "description": "Rajasthani mutton curry, extremely hot with mathania chillies.",
+    "cuisine": "Rajasthani",
+    "ingredients": [
+      "mutton",
+      "red chilli",
+      "ghee"
+    ],
+    "is_vegetarian": false,
+    "price_range": "$$$"
+  },
+  {
+    "external_id": "dish-8",
+    "name": "Masala Oats",
+    "description": "Light savoury breakfast oats with vegetables and mild spices.",
+    "cuisine": "Indian",
+    "ingredients": [
+      "oats",
+      "carrot",
+      "peas",
+      "turmeric"
+    ],
+    "is_vegetarian": true,
+    "price_range": "$"
+  },
+  {
+    "external_id": "dish-9",
+    "name": "Greek Yogurt Parfait",
+    "description": "Chilled yogurt layered with granola, berries and honey; a light breakfast.",
+    "cuisine": "Continental",
+    "ingredients": [
+      "yogurt",
+      "granola",
+      "berries",
+      "honey"
+    ],
+    "is_vegetarian": true,
+    "price_range": "$$"
+  },
+  {
+    "external_id": "dish-10",
+    "name": "Mango Kulfi",
+    "description": "Frozen sweet mango and cardamom milk dessert.",
+    "cuisine": "North Indian",
+    "ingredients": [
+      "mango",
+      "milk",
+      "cardamom"
+    ],
+    "is_vegetarian": true,
+    "price_range": "$"
+  }
+]
+```
+
+## Common queries
+
+The outputs below come from uploading exactly these ten items and running each query against the live API (OpenAI `text-embedding-3-small`, Pinecone). Your scores will differ slightly with other data; the ordering is what matters.
+
+### Spicy vegetarian pasta
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-text \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "spicy vegetarian pasta", "top_k": 3, "filters": {"is_vegetarian": true}}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byText("spicy vegetarian pasta", { topK: 3, filters: {"is_vegetarian": true} });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_text("spicy vegetarian pasta", top_k=3, filters={"is_vegetarian": True})
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `dish-1` | 0.5410 | Fair Match | cuisine: Italian, is_vegetarian: true, price_range: $$ |
+| 2 | `dish-5` | 0.5258 | Fair Match | cuisine: Italian, is_vegetarian: true, price_range: $ |
+| 3 | `dish-3` | 0.4626 | Weak Match | cuisine: Indo-Chinese, is_vegetarian: true, price_range: $ |
+
+### A light, cheap breakfast
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-text \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "light healthy breakfast", "top_k": 3, "filters": {"price_range": ["$", "$$"]}}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byText("light healthy breakfast", { topK: 3, filters: {"price_range": ["$", "$$"]} });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_text("light healthy breakfast", top_k=3, filters={"price_range": ["$", "$$"]})
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `dish-8` | 0.5096 | Fair Match | cuisine: Indian, is_vegetarian: true, price_range: $ |
+| 2 | `dish-9` | 0.4856 | Weak Match | cuisine: Continental, is_vegetarian: true, price_range: $$ |
+| 3 | `dish-2` | 0.2633 | Weak Match | cuisine: North Indian, is_vegetarian: true, price_range: $$ |
+
+### Dishes similar to dish-2 (Paneer Tikka)
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-item \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"external_id": "dish-2", "top_k": 3}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byItem("dish-2", { topK: 3 });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_item("dish-2", top_k=3)
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `dish-4` | 0.5406 | Fair Match | cuisine: North Indian, is_vegetarian: false, price_range: $$ |
+| 2 | `dish-9` | 0.5221 | Fair Match | cuisine: Continental, is_vegetarian: true, price_range: $$ |
+| 3 | `dish-10` | 0.5099 | Fair Match | cuisine: North Indian, is_vegetarian: true, price_range: $ |
+
+## Tips for better results
+
+1. Describe how a dish tastes, not just what it is: "smoky, charred, tangy" beats "paneer dish".
+2. List `ingredients` so that allergy- and preference-driven queries ("no dairy", "garlic") have something to match.
+3. Keep dietary rules as filters (`is_vegetarian: true`), never only as words in the query — similarity is not a guarantee.
+4. Use `/recommend/by-item` on the dish page and `/recommend/by-text` for the search box.
+5. Send `CLICK` and `PURCHASE` feedback from the menu; it is the data future ranking improvements are trained on.
+
+More fields help only when they describe the item: every searchable field is part of the embedded text, so noisy fields (internal codes, boilerplate) make matches worse. After changing `searchable_fields` or `filter_fields`, run `POST /index/rebuild` so existing items are re-embedded.

@@ -1,0 +1,46 @@
+:root {
+  --ifm-color-primary: #4f46e5;
+  --ifm-color-primary-dark: #4338ca;
+  --ifm-color-primary-darker: #3f35c0;
+  --ifm-color-primary-darkest: #3730a3;
+  --ifm-color-primary-light: #6366f1;
+  --ifm-color-primary-lighter: #707af3;
+  --ifm-color-primary-lightest: #818cf8;
+  --ifm-code-font-size: 92%;
+  --docusaurus-highlighted-code-line-bg: rgba(79, 70, 229, 0.1);
+}
+
+[data-theme="dark"] {
+  --ifm-color-primary: #818cf8;
+  --ifm-color-primary-dark: #6f7cf6;
+  --ifm-color-primary-darker: #6573f5;
+  --ifm-color-primary-darkest: #4f5ef2;
+  --ifm-color-primary-light: #939cfa;
+  --ifm-color-primary-lighter: #9da5fa;
+  --ifm-color-primary-lightest: #b9bffc;
+  --docusaurus-highlighted-code-line-bg: rgba(129, 140, 248, 0.15);
+}
+
+.hero--reco {
+  padding: 4rem 0;
+  text-align: center;
+}
+
+.hero--reco .buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 1.5rem;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1.5rem;
+  padding: 2rem 0 4rem;
+}
+
+.features h3 {
+  margin-bottom: 0.5rem;
+}

@@ -36,6 +36,8 @@ class Tenant(BaseEntity):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
     )
+    # Dashboard login. Null for tenants created through the API without a password.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     api_keys: Mapped[list["ApiKey"]] = relationship(
         back_populates="tenant",
@@ -43,6 +45,10 @@ class Tenant(BaseEntity):
         passive_deletes=True,
         lazy="raise",
     )
+
+    @property
+    def has_password(self) -> bool:
+        return self.password_hash is not None
 
     def __repr__(self) -> str:
         return f"<Tenant id={self.id} email={self.email!r}>"

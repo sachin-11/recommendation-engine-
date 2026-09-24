@@ -36,6 +36,7 @@ services:
   app:
     build:
       context: .
+      target: dev
       args:
         INSTALL_DEV: "true"
     env_file:
@@ -62,6 +63,7 @@ services:
   worker:
     build:
       context: .
+      target: dev
       args:
         INSTALL_DEV: "true"
     env_file:

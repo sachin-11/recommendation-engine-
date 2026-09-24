@@ -1,0 +1,95 @@
+---
+sidebar_position: 2
+title: Python
+description: The official recoengine package, sync and async.
+---
+
+# Python SDK
+
+```bash
+pip install recoengine
+```
+
+Python 3.9+, sync and async clients on httpx, Pydantic v2 models for every response, fully typed.
+
+## Create a client
+
+```python
+from recoengine import RecoEngineClient
+
+client = RecoEngineClient(
+    api_key="reco_…",                     # or RECOENGINE_API_KEY
+    base_url="https://api.recoengine.io",  # or RECOENGINE_BASE_URL; optional
+    timeout=10.0,
+    max_retries=3,
+)
+```
+
+Use `with RecoEngineClient(...) as client:` or call `client.close()` when done.
+
+## Items
+
+```python
+batch = client.items.upload([
+    {"external_id": "job_1", "title": "Python Dev", "description": "..."},
+])
+client.items.wait_for_batch(batch.batch_id)
+
+result = client.items.upload(items, async_=False)   # embed before returning, ≤ 50 items
+csv_batch = client.items.upload_csv("jobs.csv")      # path, bytes or binary file
+
+page = client.items.list(page=1, status="FAILED", search="job_")
+item = client.items.get("job_1")
+client.items.delete("job_1")
+```
+
+## Recommendations
+
+```python
+results = client.recommend.by_text(
+    query="senior python developer",
+    top_k=10,
+    filters={"location": "Delhi"},
+)
+for item in results.results:
+    print(f"{item.rank}. {item.external_id} — {item.score_label}")
+
+similar = client.recommend.by_item("job_1", top_k=5)
+matches = client.recommend.by_profile({"skills": "Python, FastAPI", "experience": "5 years"})
+
+client.recommend.submit_feedback(results.query_id, results.results[0].external_id, "CLICK")
+```
+
+## Async
+
+```python
+import asyncio
+from recoengine import AsyncRecoEngineClient
+
+async def main() -> None:
+    async with AsyncRecoEngineClient() as client:
+        results = await client.recommend.by_text("spicy vegetarian pasta", top_k=5)
+        overview = await client.analytics.overview()
+
+asyncio.run(main())
+```
+
+Every method of the sync client exists on the async client as a coroutine.
+
+## Errors and retries
+
+```python
+from recoengine import (
+    AuthError, NotFoundError, RateLimitError, RecoEngineError,
+    ServiceUnavailableError, ValidationError,
+)
+
+try:
+    client.recommend.by_item("missing-id")
+except NotFoundError as e:
+    print(e.status_code, e.message, e.request_id)
+except RateLimitError as e:
+    print(f"retry in {e.retry_after}s")
+```
+
+`429` and `503` are retried `max_retries` times, waiting for `Retry-After` when present, otherwise backing off exponentially with jitter (capped at `max_retry_delay`, 30 s). Network failures raise `APIConnectionError`.

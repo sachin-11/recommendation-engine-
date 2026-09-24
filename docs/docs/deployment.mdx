@@ -1,0 +1,66 @@
+---
+sidebar_position: 10
+title: Self-hosting and deployment
+description: Run RecoEngine on a single EC2 host with Docker Compose, nginx and monitoring.
+---
+
+# Self-hosting and deployment
+
+The repository ships a production setup for one host (an EC2 instance):
+
+| Piece | File |
+|---|---|
+| Backend image (multi-stage, non-root, health check) | `Dockerfile` |
+| Dashboard image (Next.js standalone) | `dashboard/Dockerfile` |
+| Stack: API, worker, dashboard, Postgres + nightly backups, Redis (AOF), nginx, Watchtower, Prometheus, Grafana | `docker-compose.prod.yml` |
+| Reverse proxy: `/api` → API, `/` → dashboard, rate limits, gzip, security headers, TLS-ready | `nginx/` |
+| Settings | `.env.production.example` |
+| AWS resources (ECR, EC2, Elastic IP, optional RDS / ElastiCache) | `scripts/aws-setup.sh` |
+| Build, push, deploy, migrate, verify | `scripts/deploy.sh`, `.github/workflows/deploy.yml` |
+
+## 1. Create the AWS resources
+
+Requires the AWS CLI with credentials that can manage ECR, EC2 (and RDS / ElastiCache if you add them).
+
+```bash
+AWS_REGION=us-east-1 KEY_NAME=recoengine ./scripts/aws-setup.sh             # ECR + EC2 + Elastic IP
+AWS_REGION=us-east-1 KEY_NAME=recoengine ./scripts/aws-setup.sh --with-rds --with-redis
+```
+
+It prints the ECR registry, the server's IP, and (with the flags) the RDS and ElastiCache endpoints. Put the API in the **same region as your Pinecone indexes** — cross-region round trips dominate latency.
+
+## 2. Prepare the server
+
+```bash
+ssh ubuntu@<elastic-ip>
+git clone https://github.com/sachin-11/recommendation-engine-.git recoengine && cd recoengine
+cp .env.production.example .env.production && chmod 600 .env.production
+# edit: SECRET_KEY, POSTGRES_PASSWORD + DATABASE_URL, OPENAI_API_KEY, PINECONE_API_KEY,
+#       ALLOWED_ORIGINS, ECR_REGISTRY, GRAFANA_ADMIN_PASSWORD
+```
+
+## 3. Deploy
+
+From your machine (or by pushing to `main` with the GitHub workflow configured):
+
+```bash
+DEPLOY_HOST=<elastic-ip> ECR_REGISTRY=<account>.dkr.ecr.us-east-1.amazonaws.com ./scripts/deploy.sh
+```
+
+The script builds both images, pushes them to ECR, then on the server pulls them, runs `alembic upgrade head`, restarts the stack and fails unless `/health` returns 200.
+
+## 4. HTTPS
+
+1. Point your domain at the Elastic IP.
+2. `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm certbot certonly --webroot -w /var/www/certbot -d your.domain --email you@your.domain --agree-tos`
+3. Uncomment the `443` server in `nginx/nginx.conf`, set `server_name`, add the HTTP→HTTPS redirect, then `docker compose ... exec nginx nginx -s reload`.
+
+## Monitoring
+
+- `GET /metrics` (blocked at nginx; scraped internally) exposes `reco_requests_total`, `reco_latency_seconds`, `items_total` and `embedding_pipeline_duration_seconds`. The worker exposes its own on port 9100.
+- Grafana has a pre-built **RecoEngine overview** dashboard. It listens on `127.0.0.1:3001`; open it with `ssh -L 3001:localhost:3001 ubuntu@<server>`.
+- Set `SENTRY_DSN` to report errors to Sentry.
+
+## Backups
+
+`postgres-backup` writes a nightly `pg_dump` to the `postgres_backups` volume (7 daily, 4 weekly, 6 monthly). Copy them off the host, e.g. with a cron job that syncs the volume to S3. With RDS, use its automated backups instead.

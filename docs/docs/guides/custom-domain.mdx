@@ -1,0 +1,94 @@
+---
+sidebar_position: 4
+title: Custom domains (e.g. real estate)
+description: Recommend anything by describing its fields — no engine changes needed.
+---
+
+# Custom domains
+
+The engine never knows what a "job" or a "dish" is. Everything domain-specific lives in the **domain config**, so a new vertical is a configuration, not a code change. This page sets up real estate as an example.
+
+## 1. Decide the fields
+
+Ask two questions about your items:
+
+1. **What text describes an item well?** Those become `searchable_fields`, the richest one as `primary_embedding_field`.
+2. **What must a result satisfy exactly?** Those become `filter_fields`. Use numbers for anything you want ranges on.
+
+For property listings:
+
+```json
+{
+  "primary_embedding_field": "description",
+  "searchable_fields": ["title", "description", "amenities", "neighbourhood"],
+  "filter_fields": ["city", "property_type", "bedrooms", "price", "furnished"],
+  "item_label": "listing"
+}
+```
+
+## 2. Register with `domain_type: "CUSTOM"`
+
+```bash
+curl -X POST $RECO_API/api/v1/auth/register -H "Content-Type: application/json" -d '{
+  "name": "Acme Homes", "email": "you@acmehomes.com", "password": "a-strong-password",
+  "domain_type": "CUSTOM",
+  "domain_config": {
+    "primary_embedding_field": "description",
+    "searchable_fields": ["title", "description", "amenities", "neighbourhood"],
+    "filter_fields": ["city", "property_type", "bedrooms", "price", "furnished"],
+    "item_label": "listing"
+  }
+}'
+```
+
+`CUSTOM` requires a `domain_config`; the other domain types fall back to a preset. An existing account can switch config at any time with `PUT /me/domain-config` (or the dashboard's **Settings** page), followed by `POST /index/rebuild`.
+
+## 3. Upload listings
+
+```json
+{
+  "items": [
+    {
+      "external_id": "flat-2041",
+      "title": "Sunny 2BHK near the metro",
+      "description": "Bright corner apartment with cross-ventilation, modular kitchen and a balcony facing the park.",
+      "amenities": ["lift", "power backup", "gym", "covered parking"],
+      "neighbourhood": "Quiet residential lane, 5 minutes from Indiranagar metro",
+      "city": "Bangalore",
+      "property_type": "apartment",
+      "bedrooms": 2,
+      "price": 42000,
+      "furnished": true
+    }
+  ]
+}
+```
+
+## 4. Query it
+
+```bash
+# A renter's wish, within budget
+curl -X POST $RECO_API/api/v1/recommend/by-text \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "quiet family flat near a park with good ventilation",
+       "top_k": 10,
+       "filters": {"city": "Bangalore", "bedrooms": {"gte": 2}, "price": {"lte": 50000}}}'
+
+# "Similar homes" on a listing page
+curl -X POST $RECO_API/api/v1/recommend/by-item \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"external_id": "flat-2041", "top_k": 6, "filters": {"city": "Bangalore"}}'
+
+# A saved-search profile
+curl -X POST $RECO_API/api/v1/recommend/by-profile \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"profile": {"amenities": "gym, parking", "lifestyle": "works from home, has a dog"},
+       "filters": {"furnished": true}}'
+```
+
+## Rules of thumb
+
+- Field names must be identifier-like (`bedrooms`, not `Bedrooms #`) and up to 64 characters.
+- Numbers you want to range-filter must be uploaded as JSON numbers (`42000`, not `"₹42,000"`). CSV values are stored as text.
+- Lists work for both searching (`amenities`) and any-of filtering.
+- Up to 50 searchable and 50 filter fields, but fewer, well-written fields embed better than many noisy ones.

@@ -7,6 +7,7 @@ from typing import Annotated, Any, Self
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.models.item import EmbeddingStatus
+from app.models.recommendation_log import QueryType
 from app.models.user_feedback import FeedbackType
 
 MAX_TOP_K = 100
@@ -184,6 +185,24 @@ class AnalyticsOverview(BaseModel):
     )
     embedding_status_breakdown: dict[EmbeddingStatus, int]
     period: AnalyticsPeriod
+
+
+class DailyUsage(BaseModel):
+    date: str = Field(description="UTC date, YYYY-MM-DD.")
+    count: int
+    avg_latency_ms: int | None
+
+
+class UsageResponse(BaseModel):
+    days: int
+    since: datetime
+    total_recommendations: int
+    daily: list[DailyUsage]
+    by_query_type: dict[QueryType, int]
+    cache_hit_rate: float | None = Field(
+        description="Share of cacheable queries served from cache; null with no queries."
+    )
+    feedback_total: int
 
 
 class FeedbackSummary(BaseModel):

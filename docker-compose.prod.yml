@@ -1,0 +1,172 @@
+# Production stack for a single host (EC2). Images come from ECR; nothing is built here.
+#
+#   cp .env.production.example .env.production   # fill it in
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate
+#
+# Using RDS / ElastiCache instead of the bundled postgres / redis: point DATABASE_URL and
+# REDIS_URL at them and start only the services you need, e.g.
+#   docker compose ... up -d app worker dashboard nginx prometheus grafana
+
+name: recoengine
+
+x-backend: &backend
+  image: ${ECR_REGISTRY:?set ECR_REGISTRY}/recoengine-backend:${IMAGE_TAG:-latest}
+  env_file: .env.production
+  restart: always
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  app:
+    <<: *backend
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "app.workers.embedding_worker"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/metrics', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+
+  # One-off: docker compose -f docker-compose.prod.yml run --rm migrate
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    profiles: ["tools"]
+
+  dashboard:
+    image: ${ECR_REGISTRY:?set ECR_REGISTRY}/recoengine-dashboard:${IMAGE_TAG:-latest}
+    restart: always
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Nightly pg_dump into the postgres_backups volume; keeps 7 daily, 4 weekly, 6 monthly.
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:15
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+    volumes:
+      - postgres_backups:/backups
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    depends_on: [app, dashboard]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/recoengine-locations.inc:/etc/nginx/conf.d/recoengine-locations.inc:ro
+      - certbot_www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+
+  # TLS certificates (see the HTTPS notes in nginx/nginx.conf). Not started by default.
+  certbot:
+    image: certbot/certbot:latest
+    profiles: ["ssl"]
+    volumes:
+      - certbot_www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+
+  # Pulls newer images of labelled services every 5 minutes and restarts them.
+  # For ECR it needs registry credentials: mount a Docker config that uses the
+  # amazon-ecr-credential-helper (plain `docker login` tokens expire after 12 hours).
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: always
+    command: ["--label-enable", "--interval", "300", "--cleanup"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOME}/.docker/config.json:/config.json:ro
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: always
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    restart: always
+    depends_on: [prometheus]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/recoengine.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    # Reach it with: ssh -L 3001:localhost:3001 ubuntu@<server>
+    ports:
+      - "127.0.0.1:3001:3000"
+
+volumes:
+  postgres_data:
+  postgres_backups:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  certbot_www:
+  letsencrypt:

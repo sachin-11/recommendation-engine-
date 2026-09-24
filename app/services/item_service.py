@@ -3,10 +3,10 @@
 import logging
 import math
 import uuid
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends
-from sqlalchemy import func, select, update
+from sqlalchemy import Table, func, select, update
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,7 +71,9 @@ class ItemService:
         insert = postgresql.insert if self._dialect == "postgresql" else sqlite.insert
         for start in range(0, len(rows), UPSERT_CHUNK_SIZE):
             # Core insert on the table: keys are column names (`metadata`, not `item_metadata`).
-            stmt = insert(Item.__table__).values(rows[start : start + UPSERT_CHUNK_SIZE])
+            stmt = insert(cast(Table, Item.__table__)).values(
+                rows[start : start + UPSERT_CHUNK_SIZE]
+            )
             excluded = stmt.excluded
             await self._session.execute(
                 stmt.on_conflict_do_update(
@@ -162,12 +164,16 @@ class ItemService:
         return await refresh_batch(self._session, batch)
 
     async def list_items(
-        self, *, page: int, status: EmbeddingStatus | None = None
+        self, *, page: int, status: EmbeddingStatus | None = None, search: str | None = None
     ) -> tuple[list[Item], int, int]:
-        """Return (items, total, pages) for one page of the tenant's items, newest first."""
+        """Return (items, total, pages) for one page of the tenant's items, newest first.
+        `search` matches external_ids containing it, case-insensitively."""
         conditions = [Item.tenant_id == self._tenant.id]
         if status is not None:
             conditions.append(Item.embedding_status == status)
+        if search:
+            escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            conditions.append(Item.external_id.ilike(f"%{escaped}%", escape="\\"))
         total = await self._session.scalar(
             select(func.count()).select_from(Item).where(*conditions)
         )
@@ -179,6 +185,14 @@ class ItemService:
             .limit(PAGE_SIZE)
         )
         return list(result.all()), total or 0, math.ceil((total or 0) / PAGE_SIZE)
+
+    async def get_item(self, external_id: str) -> Item:
+        item = await self._session.scalar(
+            select(Item).where(Item.tenant_id == self._tenant.id, Item.external_id == external_id)
+        )
+        if item is None:
+            raise NotFoundError(f"Item '{external_id}' not found")
+        return item
 
     async def count_by_status(self) -> dict[EmbeddingStatus, int]:
         rows = await self._session.execute(
@@ -194,11 +208,7 @@ class ItemService:
 
     async def delete_item(self, external_id: str, vector_store: PineconeService) -> None:
         """Delete from Pinecone first, so a Pinecone outage never leaves an orphan vector."""
-        item = await self._session.scalar(
-            select(Item).where(Item.tenant_id == self._tenant.id, Item.external_id == external_id)
-        )
-        if item is None:
-            raise NotFoundError(f"Item '{external_id}' not found")
+        item = await self.get_item(external_id)
         if item.pinecone_id:
             try:
                 deleted = await vector_store.delete_item(self._tenant.id, item.pinecone_id)
@@ -208,6 +218,29 @@ class ItemService:
                 raise ServiceUnavailableError("Could not delete the vector from Pinecone; retry")
         await self._session.delete(item)
         await self._session.commit()
+
+    async def delete_items(
+        self, external_ids: list[str] | None, vector_store: PineconeService
+    ) -> tuple[int, list[str]]:
+        """Delete the given items, or all of the tenant's items when `external_ids` is None.
+        Returns (deleted count, ids that did not exist). Vectors go first, as in delete_item."""
+        conditions = [Item.tenant_id == self._tenant.id]
+        if external_ids is not None:
+            conditions.append(Item.external_id.in_(external_ids))
+        items = list((await self._session.scalars(select(Item).where(*conditions))).all())
+        pinecone_ids = [item.pinecone_id for item in items if item.pinecone_id]
+        try:
+            deleted = await vector_store.delete_items(self._tenant.id, pinecone_ids)
+        except VectorStoreUnavailableError as exc:
+            raise ServiceUnavailableError(f"Vector store unavailable: {exc}") from exc
+        if not deleted:
+            raise ServiceUnavailableError("Could not delete the vectors from Pinecone; retry")
+        for item in items:
+            await self._session.delete(item)
+        await self._session.commit()
+        found = {item.external_id for item in items}
+        missing = [e for e in dict.fromkeys(external_ids or []) if e not in found]
+        return len(items), missing
 
     @property
     def _dialect(self) -> str:

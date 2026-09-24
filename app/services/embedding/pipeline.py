@@ -7,6 +7,7 @@ later by the worker; only item-specific problems mark an item FAILED.
 """
 
 import logging
+import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_object_session, async_ses
 
 from app.core.config import settings
 from app.core.exceptions import NotFoundError
+from app.core.metrics import EMBEDDING_PIPELINE_DURATION
 from app.models.base import utcnow
 from app.models.item import EmbeddingStatus, Item
 from app.models.item_batch import BatchStatus, ItemBatch
@@ -97,14 +99,17 @@ class EmbeddingPipeline:
         """
         if not items:
             return []
+        started = time.perf_counter()
         try:
             await self._embed_and_store(items, tenant)
         except UpstreamUnavailableError:
+            EMBEDDING_PIPELINE_DURATION.labels("unavailable").observe(time.perf_counter() - started)
             for item in items:
                 if item.embedding_status is EmbeddingStatus.PROCESSING:
                     item.embedding_status = EmbeddingStatus.PENDING
             await session.commit()
             raise
+        EMBEDDING_PIPELINE_DURATION.labels("ok").observe(time.perf_counter() - started)
         await session.commit()
         return [
             ItemResult(item.external_id, item.embedding_status, item.item_metadata.get("error"))

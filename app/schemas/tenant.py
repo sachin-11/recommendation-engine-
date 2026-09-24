@@ -108,7 +108,9 @@ class TenantCreate(BaseModel):
     domain_type: DomainType
     domain_config: DomainConfig | None = Field(
         default=None,
-        description="Optional for HR/FOOD/ECOMMERCE/EDTECH (a preset is used); required for CUSTOM.",
+        description=(
+            "Optional for HR/FOOD/ECOMMERCE/EDTECH (a preset is used); required for CUSTOM."
+        ),
     )
 
     @field_validator("email")

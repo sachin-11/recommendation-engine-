@@ -1,0 +1,310 @@
+---
+sidebar_position: 3
+title: E-commerce domain
+description: Related products and semantic product search.
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+{/* Generated from real API runs; see the note under each query. */}
+
+# E-commerce domain
+
+Use this setup for online stores and marketplaces: "customers also viewed" on product pages, natural-language search ("wireless headphones for the gym"), and budget-aware suggestions.
+
+## Recommended domain config
+
+```json
+{
+  "primary_embedding_field": "description",
+  "searchable_fields": [
+    "title",
+    "description",
+    "brand",
+    "tags"
+  ],
+  "filter_fields": [
+    "category",
+    "brand",
+    "price"
+  ],
+  "item_label": "product"
+}
+```
+
+Register with it (or set it later on the dashboard's **Settings** page, or with `PUT /me/domain-config`):
+
+```bash
+curl -X POST $RECO_API/api/v1/auth/register -H "Content-Type: application/json" -d '{
+  "name": "Acme", "email": "you@acme.com", "password": "a-strong-password",
+  "domain_type": "ECOMMERCE",
+  "domain_config": {"primary_embedding_field": "description", "searchable_fields": ["title", "description", "brand", "tags"], "filter_fields": ["category", "brand", "price"], "item_label": "product"}
+}'
+```
+
+Why these fields:
+
+- `description` explains what the product does; `title`, `brand` and `tags` add precise terms.
+- `price` is a number (not a `$$` bucket), so shoppers can filter with `{"lte": 5000}`.
+- `category` and `brand` are exact or any-of filters, e.g. `{"brand": ["JBL", "Sony"]}`.
+
+## Sample items
+
+Ten items in the shape this config expects. Upload them with `POST /items/upload` (`"items": [...]`).
+
+```json
+[
+  {
+    "external_id": "sku-1001",
+    "title": "WH-1000XM5 Headphones",
+    "description": "Wireless over-ear headphones with industry-leading adaptive noise cancelling and 30-hour battery.",
+    "brand": "Sony",
+    "tags": [
+      "wireless",
+      "noise cancelling",
+      "bluetooth"
+    ],
+    "category": "audio",
+    "price": 29990
+  },
+  {
+    "external_id": "sku-1002",
+    "title": "Rockerz 450 Headphones",
+    "description": "Budget wireless on-ear headphones with deep bass and 15-hour playback.",
+    "brand": "boAt",
+    "tags": [
+      "wireless",
+      "bluetooth",
+      "bass"
+    ],
+    "category": "audio",
+    "price": 1499
+  },
+  {
+    "external_id": "sku-1003",
+    "title": "Tune 760NC",
+    "description": "Wireless over-ear headphones with active noise cancelling and fast charging.",
+    "brand": "JBL",
+    "tags": [
+      "wireless",
+      "noise cancelling"
+    ],
+    "category": "audio",
+    "price": 4999
+  },
+  {
+    "external_id": "sku-1004",
+    "title": "Airdopes 141 Earbuds",
+    "description": "True wireless earbuds with ENC mics for clear calls and low-latency gaming mode.",
+    "brand": "boAt",
+    "tags": [
+      "earbuds",
+      "wireless",
+      "gaming"
+    ],
+    "category": "audio",
+    "price": 1299
+  },
+  {
+    "external_id": "sku-1005",
+    "title": "Flip 6 Speaker",
+    "description": "Portable waterproof Bluetooth speaker with punchy sound.",
+    "brand": "JBL",
+    "tags": [
+      "speaker",
+      "waterproof",
+      "portable"
+    ],
+    "category": "audio",
+    "price": 9999
+  },
+  {
+    "external_id": "sku-1006",
+    "title": "Pegasus 41 Running Shoes",
+    "description": "Responsive cushioned road running shoes for daily training.",
+    "brand": "Nike",
+    "tags": [
+      "running",
+      "shoes",
+      "cushioned"
+    ],
+    "category": "footwear",
+    "price": 11895
+  },
+  {
+    "external_id": "sku-1007",
+    "title": "Forerunner 55 GPS Watch",
+    "description": "GPS running smartwatch with pace, heart rate and training plans.",
+    "brand": "Garmin",
+    "tags": [
+      "running",
+      "gps",
+      "smartwatch"
+    ],
+    "category": "wearables",
+    "price": 20990
+  },
+  {
+    "external_id": "sku-1008",
+    "title": "Galaxy Buds FE",
+    "description": "Wireless earbuds with active noise cancellation and comfortable wing tips.",
+    "brand": "Samsung",
+    "tags": [
+      "earbuds",
+      "noise cancelling",
+      "wireless"
+    ],
+    "category": "audio",
+    "price": 4999
+  },
+  {
+    "external_id": "sku-1009",
+    "title": "Kindle Paperwhite",
+    "description": "Waterproof e-reader with a glare-free 7-inch display and weeks of battery.",
+    "brand": "Amazon",
+    "tags": [
+      "e-reader",
+      "books",
+      "waterproof"
+    ],
+    "category": "electronics",
+    "price": 16999
+  },
+  {
+    "external_id": "sku-1010",
+    "title": "Yoga Mat 6mm",
+    "description": "Non-slip cushioned yoga and workout mat with carry strap.",
+    "brand": "Decathlon",
+    "tags": [
+      "yoga",
+      "fitness",
+      "mat"
+    ],
+    "category": "fitness",
+    "price": 999
+  }
+]
+```
+
+## Common queries
+
+The outputs below come from uploading exactly these ten items and running each query against the live API (OpenAI `text-embedding-3-small`, Pinecone). Your scores will differ slightly with other data; the ordering is what matters.
+
+### Noise cancelling headphones under ₹5,000
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-text \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "wireless noise cancelling headphones", "top_k": 3, "filters": {"price": {"lte": 5000}}}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byText("wireless noise cancelling headphones", { topK: 3, filters: {"price": {"lte": 5000}} });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_text("wireless noise cancelling headphones", top_k=3, filters={"price": {"lte": 5000}})
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `sku-1003` | 0.6236 | Fair Match | brand: JBL, category: audio, price: 4999 |
+| 2 | `sku-1008` | 0.5664 | Fair Match | brand: Samsung, category: audio, price: 4999 |
+| 3 | `sku-1004` | 0.4845 | Weak Match | brand: boAt, category: audio, price: 1299 |
+
+### Products similar to sku-1006 (running shoes)
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-item \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"external_id": "sku-1006", "top_k": 3}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byItem("sku-1006", { topK: 3 });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_item("sku-1006", top_k=3)
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `sku-1007` | 0.4205 | Weak Match | brand: Garmin, category: wearables, price: 20990 |
+| 2 | `sku-1010` | 0.3822 | Weak Match | brand: Decathlon, category: fitness, price: 999 |
+| 3 | `sku-1008` | 0.3183 | Weak Match | brand: Samsung, category: audio, price: 4999 |
+
+### Audio from two brands
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-text \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "portable music for travel", "top_k": 3, "filters": {"category": "audio", "brand": ["JBL", "Sony"]}}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byText("portable music for travel", { topK: 3, filters: {"category": "audio", "brand": ["JBL", "Sony"]} });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_text("portable music for travel", top_k=3, filters={"category": "audio", "brand": ["JBL", "Sony"]})
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `sku-1005` | 0.4223 | Weak Match | brand: JBL, category: audio, price: 9999 |
+| 2 | `sku-1003` | 0.2915 | Weak Match | brand: JBL, category: audio, price: 4999 |
+| 3 | `sku-1001` | 0.2741 | Weak Match | brand: Sony, category: audio, price: 29990 |
+
+## Tips for better results
+
+1. Upload `price` as a number in one currency. Range filters compare numbers, so `"₹4,999"` would never match.
+2. Put use-cases in `tags` (`gym`, `travel`, `gift`) — shoppers search by use more than by spec.
+3. Restrict "similar products" to the same category with a filter when cross-category suggestions are unwanted (running shoes → a GPS watch can be a feature or a bug).
+4. Re-upload products when price or stock changes; the same `external_id` updates in place. Out-of-stock items can be deleted or filtered with an `in_stock` filter field.
+5. Batch several searches (e.g. per homepage row) with `/recommend/batch` — one request, one embedding call.
+
+More fields help only when they describe the item: every searchable field is part of the embedded text, so noisy fields (internal codes, boilerplate) make matches worse. After changing `searchable_fields` or `filter_fields`, run `POST /index/rebuild` so existing items are re-embedded.

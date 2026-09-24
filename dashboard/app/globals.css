@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 224 71% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 71% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 221 39% 11%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 40%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 221 39% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 95% 44%;
+    --warning-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 88%;
+    --ring: 243 75% 59%;
+    --radius: 0.6rem;
+    --chart-1: 243 75% 59%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 32 95% 50%;
+    --chart-4: 330 70% 55%;
+    --chart-5: 199 89% 48%;
+    --chart-6: 0 72% 51%;
+  }
+
+  .dark {
+    --background: 224 30% 7%;
+    --foreground: 210 20% 96%;
+    --card: 224 28% 10%;
+    --card-foreground: 210 20% 96%;
+    --popover: 224 28% 10%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 239 84% 72%;
+    --primary-foreground: 224 40% 10%;
+    --secondary: 223 20% 17%;
+    --secondary-foreground: 210 20% 96%;
+    --muted: 223 20% 17%;
+    --muted-foreground: 218 11% 65%;
+    --accent: 223 20% 17%;
+    --accent-foreground: 210 20% 96%;
+    --destructive: 0 70% 58%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 60% 45%;
+    --success-foreground: 224 40% 8%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 224 40% 8%;
+    --border: 223 18% 20%;
+    --input: 223 18% 24%;
+    --ring: 239 84% 72%;
+    --chart-1: 239 84% 72%;
+    --chart-2: 172 55% 50%;
+    --chart-3: 38 92% 58%;
+    --chart-4: 330 75% 65%;
+    --chart-5: 199 85% 60%;
+    --chart-6: 0 70% 62%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+}

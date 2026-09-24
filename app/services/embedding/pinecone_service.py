@@ -121,7 +121,7 @@ class PineconeService:
         result = await self.upsert_batch(
             tenant_id, [{"id": pinecone_id, "values": embedding, "metadata": metadata}]
         )
-        return result["failed"] == 0
+        return bool(result["failed"] == 0)
 
     async def upsert_batch(
         self, tenant_id: uuid.UUID | str, items: list[dict[str, Any]]
@@ -162,6 +162,35 @@ class PineconeService:
         except Exception:
             logger.exception("Pinecone delete failed for %s", pinecone_id)
             return False
+
+    async def delete_items(self, tenant_id: uuid.UUID | str, pinecone_ids: list[str]) -> bool:
+        """Delete several vectors, 1000 per request. True when all of them are gone."""
+        name = index_name_for(tenant_id)
+        try:
+            if not pinecone_ids or not await asyncio.to_thread(self._pc.has_index, name):
+                return True
+            index = await self._index(tenant_id)
+            for start in range(0, len(pinecone_ids), 1000):
+                await asyncio.to_thread(index.delete, ids=pinecone_ids[start : start + 1000])
+            return True
+        except VectorStoreUnavailableError:
+            raise
+        except Exception:
+            logger.exception("Pinecone bulk delete failed for %d vectors", len(pinecone_ids))
+            return False
+
+    async def delete_index(self, tenant_id: uuid.UUID | str) -> None:
+        """Drop the tenant's whole index (used when the tenant is deleted)."""
+        name = index_name_for(tenant_id)
+        try:
+            if await asyncio.to_thread(self._pc.has_index, name):
+                await asyncio.to_thread(self._pc.delete_index, name)
+        except VectorStoreUnavailableError:
+            raise
+        except Exception as exc:
+            raise VectorStoreUnavailableError(f"Cannot delete index {name}: {exc}") from exc
+        self._indexes.pop(name, None)
+        self._known_indexes.discard(name)
 
     async def get_index_stats(self, tenant_id: uuid.UUID | str) -> dict[str, Any]:
         name = index_name_for(tenant_id)

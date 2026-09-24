@@ -1,0 +1,74 @@
+---
+sidebar_position: 3
+title: Authentication
+description: API keys, dashboard sessions, errors and rate limits.
+---
+
+# Authentication
+
+Every request to `/api/v1/items`, `/recommend`, `/analytics`, `/index` and `/me` needs an API key in the `X-API-Key` header:
+
+```bash
+curl https://api.recoengine.io/api/v1/me -H "X-API-Key: reco_…"
+```
+
+## API keys
+
+- Keys look like `reco_` followed by 43 random characters.
+- The full key is shown **once**, when it is created. RecoEngine stores only a keyed hash, so a lost key cannot be recovered — create a new one and revoke the old one.
+- Create and revoke keys in the dashboard (**API Keys**), or with the API:
+
+```bash
+# Create
+curl -X POST https://api.recoengine.io/api/v1/me/api-keys \
+  -H "X-API-Key: reco_…" -H "Content-Type: application/json" \
+  -d '{"name": "production-backend"}'
+
+# Revoke (requests with it get 401 immediately)
+curl -X DELETE https://api.recoengine.io/api/v1/me/api-keys/<key_id> -H "X-API-Key: reco_…"
+```
+
+- Keys can expire: pass `"expires_at": "2027-01-01T00:00:00Z"` when creating one.
+- Use one key per application or environment, so you can revoke them independently.
+
+:::warning Keep keys on the server
+An API key can upload and delete items. Call RecoEngine from your backend, not from browser or mobile code.
+:::
+
+## Dashboard sessions
+
+Signing in to the dashboard with email and password (`POST /auth/login`) returns a 7-day **session key**. It works like an API key, is hidden from the key list, and is revoked when you sign out (`POST /auth/logout`). Login is limited to 10 attempts per minute per email.
+
+## Errors
+
+Every error has the same shape:
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Request validation failed",
+    "details": [{ "field": "body.top_k", "message": "Input should be less than or equal to 100", "type": "less_than_equal" }]
+  }
+}
+```
+
+| Status | `code` | Meaning |
+|---|---|---|
+| 400 | `bad_request` | Invalid filters, CSV columns or query (see `details`) |
+| 401 | `unauthorized` | Missing, invalid, revoked or expired key |
+| 403 | `forbidden` | Tenant is inactive |
+| 404 | `not_found` | Item, batch or query does not exist for this tenant |
+| 409 | `conflict` | E.g. recommending by an item that is not embedded yet |
+| 422 | `validation_error` | The request body does not match the schema |
+| 429 | `rate_limited` | Too many requests or items; wait `Retry-After` seconds |
+| 503 | `service_unavailable` | Embedding or vector search is unavailable or timed out; retry after `Retry-After` |
+
+Every response carries an `X-Request-ID` header. Include it when you contact support.
+
+## Rate limits
+
+- **100 requests per minute** per API key.
+- **10,000 uploaded items per UTC day** per tenant (JSON and CSV together).
+
+Both return `429` with `Retry-After`. The SDKs retry `429` and `503` automatically, up to 3 times.

@@ -14,11 +14,13 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.api.metrics import metrics_router
+from app.api.openapi import install_openapi
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import check_database, engine, get_db, ping_database
 from app.core.exceptions import AppException
-from app.core.logging import configure_structlog
+from app.core.logging import configure_sentry, configure_structlog
 from app.core.redis_client import check_redis, create_redis_client, get_redis
 from app.middleware.request_id import RequestIDMiddleware
 from app.schemas.common import ErrorBody, ErrorDetail, ErrorResponse, HealthResponse
@@ -29,6 +31,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 configure_structlog()
+configure_sentry("api")
 
 
 @asynccontextmanager
@@ -86,7 +89,8 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def _http_exception(_: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = _HTTP_ERROR_CODES.get(exc.status_code, "http_error")
         message = "Resource not found" if exc.status_code == 404 else str(exc.detail)
-        return _error_response(exc.status_code, code, message, headers=exc.headers)
+        headers = dict(exc.headers) if exc.headers else None
+        return _error_response(exc.status_code, code, message, headers=headers)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exception(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -159,6 +163,8 @@ def create_app() -> FastAPI:
             allow_credentials=False,  # API-key auth via headers; no cookies
             allow_methods=["*"],
             allow_headers=["*"],
+            # Let browser clients (the dashboard) read these response headers.
+            expose_headers=["X-Cache", "X-Request-ID", "Retry-After"],
         )
 
     # Added last, so it wraps CORS and every route: all responses carry X-Request-ID.
@@ -167,6 +173,8 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(api_router, prefix="/api/v1")
+    app.include_router(metrics_router)
+    install_openapi(app)
     return app
 
 

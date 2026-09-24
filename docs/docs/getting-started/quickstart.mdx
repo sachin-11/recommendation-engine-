@@ -1,0 +1,324 @@
+---
+sidebar_position: 2
+title: Quickstart
+description: From zero to your first recommendation in five steps.
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+# Quickstart
+
+Five steps: register, upload items, wait for embedding, get recommendations, send feedback. The examples use the HR domain; the same calls work for any domain.
+
+Install an SDK if you want one (optional — every step also shows `curl`):
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+# Nothing to install. Set the API origin once:
+export RECO_API=https://api.recoengine.io
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```bash
+npm install @recoengine/sdk
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```bash
+pip install recoengine
+```
+
+</TabItem>
+</Tabs>
+
+## 1. Register and get an API key
+
+Create your account once — in the dashboard, or with the API. The response contains your first API key, **shown only once**.
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Acme Hiring",
+    "email": "you@acme.com",
+    "password": "a-strong-password",
+    "domain_type": "HR"
+  }'
+# → {"tenant": {...}, "api_key": "reco_…", "warning": "Save this key, it won't be shown again"}
+
+export RECO_API_KEY=reco_…
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await fetch("https://api.recoengine.io/api/v1/auth/register", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    name: "Acme Hiring",
+    email: "you@acme.com",
+    password: "a-strong-password",
+    domain_type: "HR",
+  }),
+});
+const { api_key } = await res.json(); // store it as RECO_API_KEY
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+import httpx
+
+res = httpx.post(
+    "https://api.recoengine.io/api/v1/auth/register",
+    json={
+        "name": "Acme Hiring",
+        "email": "you@acme.com",
+        "password": "a-strong-password",
+        "domain_type": "HR",
+    },
+)
+api_key = res.json()["api_key"]  # store it as RECOENGINE_API_KEY
+```
+
+</TabItem>
+</Tabs>
+
+`domain_type: "HR"` uses the HR preset config. Pass your own `domain_config` to choose fields — see the [HR guide](../guides/hr-domain).
+
+## 2. Upload items
+
+Each item needs an `external_id`; the other fields come from your domain config. Uploading the same `external_id` again updates it.
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/items/upload \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "async": true,
+    "items": [
+      {"external_id": "job-101", "title": "Senior Python Developer",
+       "description": "Build FastAPI microservices for a hiring platform",
+       "skills": ["Python", "FastAPI", "PostgreSQL"], "location": "Remote",
+       "department": "Engineering", "employment_type": "full_time"},
+      {"external_id": "job-102", "title": "Data Scientist",
+       "description": "Train ranking models on user behaviour data",
+       "skills": ["Python", "PyTorch", "SQL"], "location": "Bangalore",
+       "department": "Data", "employment_type": "full_time"}
+    ]
+  }'
+# → 202 {"batch_id": "48de4e95-…", "status": "PENDING", "total_items": 2, ...}
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+import { RecoEngineClient } from "@recoengine/sdk";
+
+const client = new RecoEngineClient({ apiKey: process.env.RECO_API_KEY! });
+
+const batch = await client.items.upload([
+  {
+    external_id: "job-101",
+    title: "Senior Python Developer",
+    description: "Build FastAPI microservices for a hiring platform",
+    skills: ["Python", "FastAPI", "PostgreSQL"],
+    location: "Remote",
+    department: "Engineering",
+    employment_type: "full_time",
+  },
+  {
+    external_id: "job-102",
+    title: "Data Scientist",
+    description: "Train ranking models on user behaviour data",
+    skills: ["Python", "PyTorch", "SQL"],
+    location: "Bangalore",
+    department: "Data",
+    employment_type: "full_time",
+  },
+]);
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+from recoengine import RecoEngineClient
+
+client = RecoEngineClient()  # reads RECOENGINE_API_KEY
+
+batch = client.items.upload([
+    {"external_id": "job-101", "title": "Senior Python Developer",
+     "description": "Build FastAPI microservices for a hiring platform",
+     "skills": ["Python", "FastAPI", "PostgreSQL"], "location": "Remote",
+     "department": "Engineering", "employment_type": "full_time"},
+    {"external_id": "job-102", "title": "Data Scientist",
+     "description": "Train ranking models on user behaviour data",
+     "skills": ["Python", "PyTorch", "SQL"], "location": "Bangalore",
+     "department": "Data", "employment_type": "full_time"},
+])
+```
+
+</TabItem>
+</Tabs>
+
+For large catalogues use [CSV upload](pathname:///api-reference/#tag/Items/operation/uploadItemsCsv) (10,000 rows per file).
+
+## 3. Wait for embedding
+
+Uploads are embedded in the background, usually within seconds. Poll the batch until `status` is `DONE` (or `PARTIAL_FAIL`: some items could not be embedded — list items with `?status=FAILED` to see why).
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl $RECO_API/api/v1/items/batch/48de4e95-… -H "X-API-Key: $RECO_API_KEY"
+# → {"status": "DONE", "total_items": 2, "processed_items": 2,
+#    "failed_items": 0, "progress_percentage": 100.0, ...}
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+if (batch.mode === "async") {
+  const done = await client.items.waitForBatch(batch.batch_id); // polls every 2 s
+  console.log(done.status, `${done.processed_items}/${done.total_items}`);
+}
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+done = client.items.wait_for_batch(batch.batch_id)  # polls every 2 s
+print(done.status, f"{done.processed_items}/{done.total_items}")
+```
+
+</TabItem>
+</Tabs>
+
+## 4. Get recommendations
+
+Ask by text, by an existing item (`/recommend/by-item`), or by a profile (`/recommend/by-profile`). Filters use your `filter_fields`.
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-text \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "senior python developer with fastapi", "top_k": 5,
+       "filters": {"location": ["Remote", "Bangalore"]}}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const { results, query_id, latency_ms } = await client.recommend.byText(
+  "senior python developer with fastapi",
+  { topK: 5, filters: { location: ["Remote", "Bangalore"] } },
+);
+results.forEach((r) => console.log(r.rank, r.external_id, r.score_label));
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+results = client.recommend.by_text(
+    "senior python developer with fastapi",
+    top_k=5,
+    filters={"location": ["Remote", "Bangalore"]},
+)
+for item in results.results:
+    print(f"{item.rank}. {item.external_id} — {item.score_label}")
+```
+
+</TabItem>
+</Tabs>
+
+Example response (scores differ with your data):
+
+```json
+{
+  "results": [
+    {
+      "rank": 1,
+      "external_id": "job-101",
+      "score": 0.7108,
+      "score_label": "Good Match",
+      "metadata": { "location": "Remote", "department": "Engineering", "employment_type": "full_time" }
+    },
+    {
+      "rank": 2,
+      "external_id": "job-102",
+      "score": 0.3620,
+      "score_label": "Weak Match",
+      "metadata": { "location": "Bangalore", "department": "Data", "employment_type": "full_time" }
+    }
+  ],
+  "total": 2,
+  "query_id": "54c4f208-3af7-4790-acdb-1b246e04a27f",
+  "latency_ms": 312,
+  "request_id": "74996b11-d452-4da6-8046-b83104c0e312"
+}
+```
+
+`score` is cosine similarity. Rank by it; treat `score_label` as a rough guide — short queries often score 0.3–0.6 even when the order is right. Identical queries are cached for 5 minutes (`X-Cache: HIT`).
+
+## 5. Send feedback
+
+When a user clicks, applies, buys or dismisses a result, report it with the `query_id`. This data is collected to improve ranking.
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/feedback \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query_id": "54c4f208-3af7-4790-acdb-1b246e04a27f",
+       "external_item_id": "job-101", "feedback_type": "APPLY"}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+await client.recommend.submitFeedback(query_id, "job-101", "APPLY");
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+client.recommend.submit_feedback(results.query_id, "job-101", "APPLY")
+```
+
+</TabItem>
+</Tabs>
+
+Feedback types: `CLICK`, `THUMBS_UP`, `THUMBS_DOWN`, `PURCHASE`, `APPLY`, `IGNORE`.
+
+## What's next
+
+- Choose fields for your catalogue: [HR](../guides/hr-domain), [Food](../guides/food-domain), [E-commerce](../guides/ecommerce-domain) or [your own](../guides/custom-domain).
+- See volume, latency and feedback in the dashboard, or via `GET /analytics/overview`.
+- Handle errors and retries: [JavaScript SDK](../sdks/javascript), [Python SDK](../sdks/python).

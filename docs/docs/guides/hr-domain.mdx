@@ -1,0 +1,315 @@
+---
+sidebar_position: 1
+title: HR domain
+description: Match candidates to jobs and suggest similar roles.
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+{/* Generated from real API runs; see the note under each query. */}
+
+# HR domain
+
+Use this setup for job boards, applicant tracking systems and internal mobility: match a candidate's profile to open roles, show "similar jobs" on a job page, and power a semantic job search.
+
+## Recommended domain config
+
+```json
+{
+  "primary_embedding_field": "description",
+  "searchable_fields": [
+    "title",
+    "description",
+    "skills"
+  ],
+  "filter_fields": [
+    "location",
+    "experience_years",
+    "job_type"
+  ],
+  "item_label": "job"
+}
+```
+
+Register with it (or set it later on the dashboard's **Settings** page, or with `PUT /me/domain-config`):
+
+```bash
+curl -X POST $RECO_API/api/v1/auth/register -H "Content-Type: application/json" -d '{
+  "name": "Acme", "email": "you@acme.com", "password": "a-strong-password",
+  "domain_type": "HR",
+  "domain_config": {"primary_embedding_field": "description", "searchable_fields": ["title", "description", "skills"], "filter_fields": ["location", "experience_years", "job_type"], "item_label": "job"}
+}'
+```
+
+Why these fields:
+
+- `description` is the richest text, so it is the primary field and leads the embedded text.
+- `title` and `skills` are short but decisive; including them sharpens matches.
+- `experience_years` is a number, so it supports range filters (`{"lte": 4}`).
+- `location` and `job_type` are exact-match filters.
+
+## Sample items
+
+Ten items in the shape this config expects. Upload them with `POST /items/upload` (`"items": [...]`).
+
+```json
+[
+  {
+    "external_id": "job-101",
+    "title": "Senior Python Developer",
+    "description": "Design and build FastAPI microservices for a hiring platform; own PostgreSQL schemas and code reviews.",
+    "skills": [
+      "Python",
+      "FastAPI",
+      "PostgreSQL",
+      "Docker"
+    ],
+    "location": "Remote",
+    "experience_years": 5,
+    "job_type": "full_time"
+  },
+  {
+    "external_id": "job-102",
+    "title": "Backend Engineer (Go)",
+    "description": "Build high-throughput payment APIs in Go with gRPC and PostgreSQL.",
+    "skills": [
+      "Go",
+      "gRPC",
+      "PostgreSQL"
+    ],
+    "location": "Bangalore",
+    "experience_years": 4,
+    "job_type": "full_time"
+  },
+  {
+    "external_id": "job-103",
+    "title": "Data Scientist",
+    "description": "Train ranking and recommendation models on user behaviour data; run A/B tests.",
+    "skills": [
+      "Python",
+      "PyTorch",
+      "SQL",
+      "Statistics"
+    ],
+    "location": "Remote",
+    "experience_years": 3,
+    "job_type": "full_time"
+  },
+  {
+    "external_id": "job-104",
+    "title": "Frontend Engineer",
+    "description": "Craft responsive React and TypeScript interfaces for recruiters.",
+    "skills": [
+      "React",
+      "TypeScript",
+      "CSS"
+    ],
+    "location": "Pune",
+    "experience_years": 2,
+    "job_type": "contract"
+  },
+  {
+    "external_id": "job-105",
+    "title": "DevOps Engineer",
+    "description": "Run Kubernetes clusters on AWS, Terraform the infrastructure and own CI/CD.",
+    "skills": [
+      "Kubernetes",
+      "AWS",
+      "Terraform"
+    ],
+    "location": "Delhi",
+    "experience_years": 4,
+    "job_type": "full_time"
+  },
+  {
+    "external_id": "job-106",
+    "title": "Python Backend Developer",
+    "description": "Build Django and Django REST Framework services for an e-commerce marketplace.",
+    "skills": [
+      "Python",
+      "Django",
+      "Redis",
+      "Celery"
+    ],
+    "location": "Delhi",
+    "experience_years": 3,
+    "job_type": "full_time"
+  },
+  {
+    "external_id": "job-107",
+    "title": "Machine Learning Engineer",
+    "description": "Ship embedding and retrieval models to production with Python and vector databases.",
+    "skills": [
+      "Python",
+      "PyTorch",
+      "Vector search",
+      "MLOps"
+    ],
+    "location": "Remote",
+    "experience_years": 4,
+    "job_type": "full_time"
+  },
+  {
+    "external_id": "job-108",
+    "title": "HR Business Partner",
+    "description": "Own employee relations, hiring plans and performance cycles for engineering teams.",
+    "skills": [
+      "Recruiting",
+      "Employee relations"
+    ],
+    "location": "Delhi",
+    "experience_years": 6,
+    "job_type": "full_time"
+  },
+  {
+    "external_id": "job-109",
+    "title": "Junior Python Developer",
+    "description": "Write and test Python scripts and small Flask APIs under mentorship.",
+    "skills": [
+      "Python",
+      "Flask",
+      "Git"
+    ],
+    "location": "Pune",
+    "experience_years": 0,
+    "job_type": "internship"
+  },
+  {
+    "external_id": "job-110",
+    "title": "Site Reliability Engineer",
+    "description": "Keep Python and Go services reliable: observability, on-call, incident reviews.",
+    "skills": [
+      "Prometheus",
+      "Linux",
+      "Python",
+      "Go"
+    ],
+    "location": "Bangalore",
+    "experience_years": 5,
+    "job_type": "full_time"
+  }
+]
+```
+
+## Common queries
+
+The outputs below come from uploading exactly these ten items and running each query against the live API (OpenAI `text-embedding-3-small`, Pinecone). Your scores will differ slightly with other data; the ordering is what matters.
+
+### Remote Python backend roles
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-text \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "senior python backend engineer with fastapi", "top_k": 3, "filters": {"location": "Remote"}}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byText("senior python backend engineer with fastapi", { topK: 3, filters: {"location": "Remote"} });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_text("senior python backend engineer with fastapi", top_k=3, filters={"location": "Remote"})
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `job-101` | 0.7108 | Good Match | experience_years: 5, job_type: full_time, location: Remote |
+| 2 | `job-107` | 0.3620 | Weak Match | experience_years: 4, job_type: full_time, location: Remote |
+| 3 | `job-103` | 0.2817 | Weak Match | experience_years: 3, job_type: full_time, location: Remote |
+
+### Jobs for a candidate profile, at most 4 years of experience required
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-profile \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"profile": {"skills": "Python, Django, PostgreSQL, Redis", "experience": "3 years building REST APIs", "preferred_location": "Delhi"}, "top_k": 3, "filters": {"experience_years": {"lte": 4}}}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byProfile({"skills": "Python, Django, PostgreSQL, Redis", "experience": "3 years building REST APIs", "preferred_location": "Delhi"}, { topK: 3, filters: {"experience_years": {"lte": 4}} });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_profile({"skills": "Python, Django, PostgreSQL, Redis", "experience": "3 years building REST APIs", "preferred_location": "Delhi"}, top_k=3, filters={"experience_years": {"lte": 4}})
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `job-106` | 0.6466 | Fair Match | experience_years: 3, job_type: full_time, location: Delhi |
+| 2 | `job-102` | 0.5250 | Fair Match | experience_years: 4, job_type: full_time, location: Bangalore |
+| 3 | `job-109` | 0.4879 | Weak Match | experience_years: 0, job_type: internship, location: Pune |
+
+### Jobs similar to job-107 (ML Engineer)
+
+<Tabs groupId="lang">
+<TabItem value="curl" label="curl">
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-item \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"external_id": "job-107", "top_k": 3}'
+```
+
+</TabItem>
+<TabItem value="js" label="JavaScript">
+
+```ts
+const res = await client.recommend.byItem("job-107", { topK: 3 });
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+res = client.recommend.by_item("job-107", top_k=3)
+```
+
+</TabItem>
+</Tabs>
+
+Output from a real run on the 10 sample items:
+
+| Rank | Item | Score | Label | Metadata |
+|---|---|---|---|---|
+| 1 | `job-103` | 0.5437 | Fair Match | experience_years: 3, job_type: full_time, location: Remote |
+| 2 | `job-101` | 0.4385 | Weak Match | experience_years: 5, job_type: full_time, location: Remote |
+| 3 | `job-106` | 0.4038 | Weak Match | experience_years: 3, job_type: full_time, location: Delhi |
+
+## Tips for better results
+
+1. Write `description` as a paragraph about the work, not a list of perks. Perks, salary text and legal boilerplate dilute the embedding.
+2. Send `skills` as a list. It is embedded as `skills: Python FastAPI …`, which matches skill-heavy queries and profiles well.
+3. For candidate matching, use `/recommend/by-profile` with the candidate's skills and experience; profile field names do not have to match your item fields.
+4. Upload `experience_years` as a number, not `"3+"`, or range filters will not match it.
+5. Filter hard constraints (location, job type) instead of putting them in the query text.
+
+More fields help only when they describe the item: every searchable field is part of the embedded text, so noisy fields (internal codes, boilerplate) make matches worse. After changing `searchable_fields` or `filter_fields`, run `POST /index/rebuild` so existing items are re-embedded.

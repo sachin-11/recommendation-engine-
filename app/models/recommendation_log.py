@@ -35,6 +35,8 @@ class RecommendationLog(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     top_result_external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     filters_applied: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
+    # HIT, MISS, BYPASS (raw data requested) or PARTIAL (batch); for the cache hit rate.
+    cache_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     def __repr__(self) -> str:
         return f"<RecommendationLog id={self.id} {self.query_type} results={self.results_count}>"

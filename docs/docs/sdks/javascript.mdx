@@ -1,0 +1,96 @@
+---
+sidebar_position: 1
+title: JavaScript / TypeScript
+description: The official @recoengine/sdk package.
+---
+
+# JavaScript / TypeScript SDK
+
+```bash
+npm install @recoengine/sdk
+```
+
+Works in Node 18+ and modern browsers (keep API keys on the server), ships ESM and CommonJS builds with full TypeScript types, and depends only on axios.
+
+## Create a client
+
+```ts
+import { RecoEngineClient } from "@recoengine/sdk";
+
+const client = new RecoEngineClient({
+  apiKey: process.env.RECO_API_KEY!,
+  baseUrl: "https://api.recoengine.io", // optional
+  timeout: 10000,                       // ms, optional
+  maxRetries: 3,                        // optional
+});
+```
+
+## Items
+
+```ts
+// Upload (async by default) and wait for embedding
+const batch = await client.items.upload([{ external_id: "job-1", title: "Python Dev", description: "…" }]);
+if (batch.mode === "async") await client.items.waitForBatch(batch.batch_id);
+
+// Or embed before returning (≤ 50 items)
+const sync = await client.items.upload(items, { async: false });
+
+// CSV from a path (Node) or a Blob/File (browser)
+const csvBatch = await client.items.uploadCSV("./jobs.csv");
+
+const page = await client.items.list({ page: 1, status: "FAILED", search: "job-" });
+const item = await client.items.get("job-1");
+await client.items.delete("job-1");
+```
+
+## Recommendations
+
+```ts
+const byText = await client.recommend.byText("senior python developer", {
+  topK: 10,
+  filters: { location: ["Remote", "Delhi"], experience_years: { lte: 5 } },
+  includeRawData: true, // adds each item's uploaded data; never cached
+});
+
+const similar = await client.recommend.byItem("job-101", { topK: 5 });
+const matches = await client.recommend.byProfile({ skills: "Python, FastAPI", experience: "5 years" });
+
+await client.recommend.submitFeedback(byText.query_id, byText.results[0].external_id, "CLICK");
+
+console.log(byText.cache, byText.latency_ms); // "HIT" | "MISS" | …, milliseconds
+```
+
+## Analytics
+
+```ts
+const overview = await client.analytics.overview();
+const feedback = await client.analytics.feedbackSummary({ days: 30 });
+const usage = await client.analytics.usage({ days: 7 });
+```
+
+## Errors and retries
+
+| Class | When |
+|---|---|
+| `AuthError` | 401 / 403 |
+| `NotFoundError` | 404 |
+| `ValidationError` | 400 / 409 / 422 (see `details`) |
+| `RateLimitError` | 429 after retries (`retryAfter` in seconds) |
+| `ServiceUnavailableError` | 503 after retries |
+| `ConnectionError` | the API could not be reached |
+
+All extend `RecoEngineError` and carry `status`, `code`, `details` and `requestId`.
+
+`429` and `503` are retried up to `maxRetries` times. The SDK waits for `Retry-After` when the API sends it, otherwise backs off exponentially (`retryBaseDelayMs × 2^attempt`, with jitter), never longer than `maxRetryDelayMs` (30 s).
+
+```ts
+import { RateLimitError, ValidationError } from "@recoengine/sdk";
+
+try {
+  await client.recommend.byText("…", { filters: { salary: 5 } });
+} catch (error) {
+  if (error instanceof ValidationError) console.error(error.details);
+  else if (error instanceof RateLimitError) console.error(`retry in ${error.retryAfter}s`);
+  else throw error;
+}
+```

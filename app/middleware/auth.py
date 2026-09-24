@@ -25,7 +25,12 @@ API_KEY_HEADER = "X-API-Key"
 # Writing last_used_at on every request would turn each read into a write.
 LAST_USED_RESOLUTION = timedelta(minutes=1)
 
-api_key_scheme = APIKeyHeader(name=API_KEY_HEADER, auto_error=False)
+api_key_scheme = APIKeyHeader(
+    name=API_KEY_HEADER,
+    scheme_name="ApiKeyAuth",
+    description="Your API key, e.g. `reco_…`. Create keys in the dashboard or via /me/api-keys.",
+    auto_error=False,
+)
 
 
 @dataclass(frozen=True, slots=True)

@@ -28,9 +28,12 @@ class RateLimiter:
         self._redis = redis
 
     async def hit_request(self, api_key_id: uuid.UUID, limit: int | None = None) -> None:
-        limit = limit or settings.RATE_LIMIT_RPM
+        await self.hit(f"req:{api_key_id}", limit or settings.RATE_LIMIT_RPM)
+
+    async def hit(self, name: str, limit: int) -> None:
+        """Count one event for `name` in the current one-minute window."""
         now = time.time()
-        key = f"rl:req:{api_key_id}:{int(now // 60)}"
+        key = f"rl:{name}:{int(now // 60)}"
         try:
             async with self._redis.pipeline(transaction=True) as pipe:
                 pipe.incr(key)

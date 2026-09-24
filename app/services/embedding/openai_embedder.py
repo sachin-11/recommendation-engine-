@@ -61,7 +61,7 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
     tokens = encoding.encode(text, disallowed_special=())
     if len(tokens) <= max_tokens:
         return text
-    return encoding.decode(tokens[:max_tokens])
+    return str(encoding.decode(tokens[:max_tokens]))
 
 
 class OpenAIEmbedder:
@@ -129,7 +129,7 @@ class OpenAIEmbedder:
                         model=self.model,
                         input=texts,
                         dimensions=self.dimension,
-                        **({"timeout": self._request_timeout} if self._request_timeout else {}),
+                        timeout=self._request_timeout or openai.NOT_GIVEN,
                     )
         except RetryError as exc:
             cause = exc.last_attempt.exception()

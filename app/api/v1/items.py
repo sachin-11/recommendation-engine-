@@ -12,6 +12,7 @@ from app.middleware.auth import AuthDep, authenticate
 from app.middleware.rate_limit import RateLimiterDep, enforce_request_rate
 from app.models.item import EmbeddingStatus
 from app.models.item_batch import ItemBatch
+from app.schemas.account import BulkDeleteRequest, BulkDeleteResponse
 from app.schemas.common import ERROR_RESPONSES, ErrorResponse
 from app.schemas.item import (
     AsyncUploadResponse,
@@ -151,8 +152,11 @@ async def list_items(
     service: ItemServiceDep,
     page: Annotated[int, Query(ge=1)] = 1,
     status_filter: Annotated[EmbeddingStatus | None, Query(alias="status")] = None,
+    search: Annotated[
+        str | None, Query(max_length=255, description="Part of an external_id, any case")
+    ] = None,
 ) -> ItemListResponse:
-    items, total, pages = await service.list_items(page=page, status=status_filter)
+    items, total, pages = await service.list_items(page=page, status=status_filter, search=search)
     return ItemListResponse(
         items=[ItemResponse.model_validate(item) for item in items],
         total=total,
@@ -160,6 +164,39 @@ async def list_items(
         page_size=PAGE_SIZE,
         pages=pages,
     )
+
+
+@items_router.post(
+    "/bulk-delete",
+    summary="Delete up to 1000 items from the database and Pinecone",
+    responses={
+        503: {"model": ErrorResponse, "description": "Pinecone unavailable; nothing deleted"}
+    },
+)
+async def bulk_delete_items(
+    payload: BulkDeleteRequest, service: ItemServiceDep, vector_store: VectorStoreDep
+) -> BulkDeleteResponse:
+    deleted, not_found = await service.delete_items(payload.external_ids, vector_store)
+    return BulkDeleteResponse(deleted=deleted, not_found=not_found)
+
+
+@items_router.delete(
+    "",
+    summary="Delete ALL of this tenant's items from the database and Pinecone",
+    responses={
+        503: {"model": ErrorResponse, "description": "Pinecone unavailable; nothing deleted"}
+    },
+)
+async def delete_all_items(
+    service: ItemServiceDep, vector_store: VectorStoreDep
+) -> BulkDeleteResponse:
+    deleted, _ = await service.delete_items(None, vector_store)
+    return BulkDeleteResponse(deleted=deleted, not_found=[])
+
+
+@items_router.get("/{external_id}", summary="One item, with its embedding status and metadata")
+async def get_item(external_id: str, service: ItemServiceDep) -> ItemResponse:
+    return ItemResponse.model_validate(await service.get_item(external_id))
 
 
 @items_router.delete(

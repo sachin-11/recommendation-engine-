@@ -28,6 +28,7 @@ def build_log(
         top_result_external_id=results[0]["external_id"] if results else None,
         latency_ms=latency_ms,
         filters_applied=recommendation.filters,
+        cache_status=recommendation.cache_status,
     )
 
 

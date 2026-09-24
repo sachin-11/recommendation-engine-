@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, status
 
-from app.api.v1 import analytics, recommend
+from app.api.v1 import account, analytics, recommend
 from app.api.v1.items import index_router, items_router
 from app.schemas.common import ERROR_RESPONSES, ErrorResponse
 from app.schemas.tenant import (
@@ -75,3 +75,5 @@ api_router.include_router(items_router)
 api_router.include_router(index_router)
 api_router.include_router(recommend.router)
 api_router.include_router(analytics.router)
+api_router.include_router(account.auth_router)
+api_router.include_router(account.me_router)

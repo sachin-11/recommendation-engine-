@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.v1.items import AUTH_RESPONSES, PROTECTED
 from app.core.database import get_db, get_session_factory
+from app.core.metrics import RECO_LATENCY, RECO_REQUESTS
 from app.middleware.auth import AuthDep
 from app.schemas.common import ErrorResponse
 from app.schemas.recommend import (
@@ -70,7 +71,7 @@ class Responder:
         self._save_logs([(query_id, recommendation)], latency_ms)
         self._response.headers[CACHE_HEADER] = recommendation.cache_status
         return RecommendResponse(
-            results=recommendation.results,  # type: ignore[arg-type]
+            results=recommendation.results,
             total=len(recommendation.results),
             query_id=query_id,
             latency_ms=latency_ms,
@@ -84,7 +85,7 @@ class Responder:
         statuses = {r.cache_status for r in recommendations.values()}
         self._response.headers[CACHE_HEADER] = statuses.pop() if len(statuses) == 1 else "PARTIAL"
         return BatchRecommendResponse(
-            results={qid: r.results for qid, r in recommendations.items()},  # type: ignore[misc]
+            results={qid: r.results for qid, r in recommendations.items()},
             query_ids=query_ids,
             latency_ms=latency_ms,
             request_id=self._request_id,
@@ -94,6 +95,8 @@ class Responder:
         logs = [build_log(qid, self._tenant_id, rec, latency_ms) for qid, rec in entries]
         self._background_tasks.add_task(save_recommendation_logs, self._session_factory, logs)
         for (_, rec), entry in zip(entries, logs, strict=True):
+            RECO_REQUESTS.labels(str(self._tenant_id), rec.query_type.value).inc()
+            RECO_LATENCY.labels(rec.query_type.value).observe(latency_ms / 1000)
             log.info(
                 "recommendation_served",
                 tenant_id=str(self._tenant_id),

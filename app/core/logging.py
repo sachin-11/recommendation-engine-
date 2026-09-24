@@ -11,6 +11,22 @@ import structlog
 from app.core.config import settings
 
 
+def configure_sentry(component: str) -> None:
+    """Report unhandled errors to Sentry when SENTRY_DSN is set. No personal data is sent."""
+    if settings.SENTRY_DSN is None:
+        return
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN.get_secret_value(),
+        environment=settings.APP_ENV,
+        release=f"recoengine@{settings.APP_VERSION}",
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=False,
+    )
+    sentry_sdk.set_tag("component", component)
+
+
 def configure_structlog() -> None:
     renderer: structlog.types.Processor = (
         structlog.processors.JSONRenderer()

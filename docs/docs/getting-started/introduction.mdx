@@ -1,0 +1,70 @@
+---
+sidebar_position: 1
+title: Introduction
+description: What RecoEngine does and how its pieces fit together.
+---
+
+# Introduction
+
+RecoEngine is a recommendation API for any catalogue. You upload your items — job postings, dishes, products, courses or anything else — and ask for the ones most similar to:
+
+- **a piece of text**, like a search box: *"senior python developer with fastapi"*,
+- **an item you already have**, for "similar jobs" or "more like this",
+- **a profile**, such as a candidate's skills and experience.
+
+You do not train a model. Each item is turned into text, embedded with OpenAI's `text-embedding-3-small`, and stored in a vector index of its own for your account. Queries are embedded the same way and matched by cosine similarity.
+
+## Core concepts
+
+| Concept | What it is |
+|---|---|
+| **Tenant** | Your account. Items, keys and analytics are isolated per tenant. |
+| **API key** | Sent as `X-API-Key` on every request. See [Authentication](./authentication). |
+| **Item** | One thing you recommend. It needs an `external_id` (your own id); every other field is up to you. |
+| **Domain config** | Tells RecoEngine which item fields describe an item (embedded) and which are filters. |
+| **Batch** | An asynchronous upload. Poll it until every item is embedded. |
+| **Query id** | Returned with every recommendation, so you can report what the user did with it (feedback). |
+
+## The domain config
+
+The domain config is what makes one engine work for jobs and for dishes:
+
+```json
+{
+  "primary_embedding_field": "description",
+  "searchable_fields": ["title", "description", "skills"],
+  "filter_fields": ["location", "experience_years", "job_type"],
+  "item_label": "job"
+}
+```
+
+- **`searchable_fields`** are joined into the text that gets embedded, the primary field first: `description: … title: … skills: …`.
+- **`filter_fields`** are stored next to each vector so queries can filter on them: `{"location": "Remote", "experience_years": {"lte": 4}}`.
+- Other fields are kept with the item and returned with `include_raw_data`, but do not affect matching.
+
+Presets exist for HR, Food, E-commerce and EdTech; each [domain guide](../guides/hr-domain) shows a complete setup. Any other catalogue works as a [custom domain](../guides/custom-domain).
+
+## How a request flows
+
+```
+upload ──► items table (PENDING) ──► worker: text → OpenAI embedding → Pinecone ──► DONE
+query  ──► filters validated ──► cache? ──► embed query (or reuse item vector) ──► Pinecone top-k ──► ranked results
+```
+
+## Limits
+
+| Limit | Value |
+|---|---|
+| Requests per API key | 100 per minute |
+| Items uploaded per tenant | 10,000 per UTC day |
+| Items per JSON upload | 1,000 (50 when `async: false`) |
+| CSV upload | 10,000 rows, 10 MB |
+| `top_k` | 1–100 |
+
+`429` and `503` responses carry a `Retry-After` header; the official SDKs wait and retry for you.
+
+## Next steps
+
+- Make your first recommendation in the [Quickstart](./quickstart).
+- Pick a [domain guide](../guides/hr-domain) close to your catalogue.
+- Browse every endpoint in the [API reference](pathname:///api-reference/).
