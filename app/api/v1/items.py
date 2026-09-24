@@ -37,13 +37,14 @@ AUTH_RESPONSES: dict[int | str, dict[str, object]] = {
     401: {"model": ErrorResponse, "description": "Missing, invalid or expired API key"},
     429: {"model": ErrorResponse, "description": "Rate limit exceeded (see Retry-After)"},
 }
-_protected = [Depends(authenticate), Depends(enforce_request_rate)]
+# Every tenant-facing router: API key auth, then the per-key request rate limit.
+PROTECTED = [Depends(authenticate), Depends(enforce_request_rate)]
 
 items_router = APIRouter(
-    prefix="/items", tags=["items"], dependencies=_protected, responses=AUTH_RESPONSES
+    prefix="/items", tags=["items"], dependencies=PROTECTED, responses=AUTH_RESPONSES
 )
 index_router = APIRouter(
-    prefix="/index", tags=["index"], dependencies=_protected, responses=AUTH_RESPONSES
+    prefix="/index", tags=["index"], dependencies=PROTECTED, responses=AUTH_RESPONSES
 )
 
 

@@ -2,7 +2,7 @@
 
 A multi-tenant, domain-agnostic recommendation engine SaaS. Each tenant describes its own item schema (jobs, dishes, products, courses, or anything custom), and the engine recommends items using OpenAI embeddings and Pinecone vector search.
 
-> **Status:** Module 1 (tenants, API keys) and Module 2 (item ingestion, embeddings, Pinecone) are implemented. The recommendation query API comes next (Module 3).
+> **Status:** Module 1 (tenants, API keys), Module 2 (item ingestion, embeddings, Pinecone) and Module 3 (recommendation queries, feedback, analytics) are implemented.
 
 ## Tech stack
 
@@ -16,13 +16,15 @@ A multi-tenant, domain-agnostic recommendation engine SaaS. Each tenant describe
 
 ```
 app/
-  api/v1/               # v1 HTTP routes: tenants (router.py), items + index (items.py)
-  core/                 # config, database, redis, security, exceptions
-  middleware/           # X-API-Key auth and Redis rate limiting
-  models/               # SQLAlchemy models (Tenant, ApiKey, Item, ItemBatch)
+  api/v1/               # v1 routes: tenants, items + index, recommend, analytics
+  core/                 # config, database, redis, security, exceptions, logging
+  middleware/           # X-API-Key auth, Redis rate limiting, X-Request-ID
+  models/               # Tenant, ApiKey, Item, ItemBatch, RecommendationLog, UserFeedback
   schemas/              # Pydantic request/response models
   services/
     embedding/          # TextBuilder -> OpenAIEmbedder -> PineconeService, and the pipeline
+    recommendation/     # QueryEngine, FilterBuilder, ResultFormatter, result cache, logging
+    analytics_service.py
     item_service.py     # ingestion, listing, deletion, rebuild
     csv_import.py       # CSV parsing and column auto-detection
   workers/              # standalone embedding worker
@@ -117,6 +119,15 @@ These routes need an `X-API-Key` header:
 | `DELETE` | `/api/v1/items/{external_id}`         | Delete an item from the database and Pinecone                |
 | `GET`    | `/api/v1/index/stats`                 | Pinecone index stats and item counts by status               |
 | `POST`   | `/api/v1/index/rebuild`               | Re-embed every item (for example after a domain config change) |
+| `POST`   | `/api/v1/recommend/by-text`           | Items matching free text                                     |
+| `POST`   | `/api/v1/recommend/by-item`           | Items similar to one of your items (never includes itself)   |
+| `POST`   | `/api/v1/recommend/by-profile`        | Items matching a profile, e.g. a candidate's resume fields   |
+| `POST`   | `/api/v1/recommend/batch`             | Up to 20 text queries in one request                         |
+| `POST`   | `/api/v1/recommend/feedback`          | Record CLICK, THUMBS_UP, THUMBS_DOWN, PURCHASE, APPLY or IGNORE |
+| `GET`    | `/api/v1/analytics/overview`          | Item count, query volume, average latency, top items         |
+| `GET`    | `/api/v1/analytics/feedback-summary`  | Feedback counts by type (default: last 30 days)              |
+
+Every response carries an `X-Request-ID` header (a well-formed incoming one is reused).
 
 ### Example
 
@@ -156,6 +167,124 @@ If OpenAI or Pinecone is down, items go back to `PENDING` and a synchronous uplo
 **CSV uploads:** headers are matched to domain-config fields ignoring case and punctuation (`Dietary-Tags` → `dietary_tags`). The id column can be named `external_id`, `id`, `item_id` or `sku`. A CSV without an id or primary-field column gets a `400` with suggested column names.
 
 **Rate limits** (Redis): 100 requests per minute per API key, and 10,000 ingested items per tenant per UTC day. Both return `429` with a `Retry-After` header and are set by `RATE_LIMIT_RPM` and `DAILY_ITEM_LIMIT`.
+
+## Recommendations
+
+Every query returns ranked results, a `query_id` for feedback, and the latency:
+
+```json
+{
+  "results": [
+    {
+      "rank": 1,
+      "external_id": "job-101",
+      "score": 0.7677,
+      "score_label": "Good Match",
+      "metadata": {"department": "Engineering", "employment_type": "full_time", "location": "Bangalore"}
+    }
+  ],
+  "total": 1,
+  "query_id": "54c4f208-3af7-4790-acdb-1b246e04a27f",
+  "latency_ms": 712,
+  "request_id": "74996b11-d452-4da6-8046-b83104c0e312"
+}
+```
+
+- **Filters** use the tenant's `filter_fields`: `"Delhi"` (exact), `["Delhi", "Pune"]` (any of), `{"gte": 3, "lte": 8}` (range; also `gt`, `lt`, `eq`, `ne`, `in`, `nin`). Unknown fields or wrong value types get a `400`. Range filters only match values uploaded as JSON numbers; CSV values are stored as text.
+- **`score_label`**: above 0.85 Excellent, above 0.7 Good, above 0.5 Fair, otherwise Weak. Short text queries against `text-embedding-3-small` usually score 0.3 to 0.6 even when the ranking is right, so treat the label as a rough guide.
+- **`include_raw_data: true`** adds each item's full uploaded data.
+- **Caching:** results are cached in Redis for 5 minutes (`rec:{tenant_id}:{sha256}`), keyed on the query, the normalised filters and `top_k`. The `X-Cache` header is `HIT`, `MISS`, or `BYPASS` (with `include_raw_data`); a batch can also be `PARTIAL`.
+- **Failures:** if Pinecone does not answer within 5 seconds, or OpenAI or Pinecone is down, the API returns `503` with `Retry-After: 5`, never partial results.
+- **Logging:** every query is stored in `recommendation_logs` after the response is sent, and logged with structlog (`tenant_id`, `query_type`, `latency_ms`, `result_count`, `request_id`).
+
+**Latency.** Measured from a laptop in India against Pinecone and OpenAI in `us-east-1`, a warm by-item query takes about 320 ms and a by-text query about 700 ms. Almost all of that is network time: a single Pinecone query is about 300 ms and an OpenAI embedding about 400 ms from there, while the app adds about 20 ms. To get under 200 ms, deploy the API in the same region as the Pinecone index. Cache hits take under 10 ms.
+
+### HR: candidate profile → matching jobs
+
+Register the tenant with the filters you need (this overrides the HR preset):
+
+```bash
+curl -X POST http://localhost:8000/api/v1/tenants -H "Content-Type: application/json" -d '{
+  "name": "Acme Hiring", "email": "hiring@acme.com", "domain_type": "HR",
+  "domain_config": {
+    "primary_embedding_field": "description",
+    "searchable_fields": ["title", "description", "skills"],
+    "filter_fields": ["location", "experience_years", "job_type"],
+    "item_label": "job"
+  }}'
+
+# Jobs for a candidate: every profile field is used, whatever its name
+curl -X POST http://localhost:8000/api/v1/recommend/by-profile \
+  -H "X-API-Key: $HR_KEY" -H "Content-Type: application/json" -d '{
+  "profile": {
+    "skills": "Python, FastAPI, PostgreSQL",
+    "experience": "5 years backend development",
+    "preferred_location": "Remote"
+  },
+  "top_k": 10,
+  "filters": {"location": ["Remote", "Delhi"], "experience_years": {"lte": 5}, "job_type": "full_time"}
+}'
+
+# Jobs similar to this one
+curl -X POST http://localhost:8000/api/v1/recommend/by-item \
+  -H "X-API-Key: $HR_KEY" -H "Content-Type: application/json" \
+  -d '{"external_id": "job-101", "top_k": 5, "filters": {"location": "Delhi"}}'
+```
+
+### Food: "spicy veg dish" → dishes
+
+```bash
+curl -X POST http://localhost:8000/api/v1/tenants -H "Content-Type: application/json" -d '{
+  "name": "Acme Kitchen", "email": "kitchen@acme.com", "domain_type": "FOOD",
+  "domain_config": {
+    "primary_embedding_field": "description",
+    "searchable_fields": ["name", "description", "cuisine", "ingredients"],
+    "filter_fields": ["cuisine", "is_vegetarian", "price_range"],
+    "item_label": "dish"
+  }}'
+
+curl -X POST http://localhost:8000/api/v1/recommend/by-text \
+  -H "X-API-Key: $FOOD_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "spicy vegetarian pasta", "top_k": 5, "filters": {"is_vegetarian": true, "price_range": ["$", "$$"]}}'
+
+curl -X POST http://localhost:8000/api/v1/recommend/by-item \
+  -H "X-API-Key: $FOOD_KEY" -H "Content-Type: application/json" \
+  -d '{"external_id": "dish-1", "top_k": 5, "filters": {"cuisine": {"ne": "Italian"}}}'
+```
+
+### E-commerce: products
+
+Upload `price` as a number so range filters work:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/tenants -H "Content-Type: application/json" -d '{
+  "name": "Acme Store", "email": "store@acme.com", "domain_type": "ECOMMERCE",
+  "domain_config": {
+    "primary_embedding_field": "description",
+    "searchable_fields": ["title", "description", "brand", "tags"],
+    "filter_fields": ["category", "brand", "price"],
+    "item_label": "product"
+  }}'
+
+curl -X POST http://localhost:8000/api/v1/recommend/by-text \
+  -H "X-API-Key: $STORE_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "wireless noise cancelling headphones", "top_k": 10, "filters": {"category": "audio", "price": {"lte": 5000}}}'
+
+curl -X POST http://localhost:8000/api/v1/recommend/by-item \
+  -H "X-API-Key: $STORE_KEY" -H "Content-Type: application/json" \
+  -d '{"external_id": "sku-2231", "top_k": 8, "filters": {"brand": ["Sony", "JBL"]}}'
+```
+
+### Feedback and analytics
+
+```bash
+curl -X POST http://localhost:8000/api/v1/recommend/feedback \
+  -H "X-API-Key: $HR_KEY" -H "Content-Type: application/json" \
+  -d '{"query_id": "<query_id from a recommendation>", "external_item_id": "job-101", "feedback_type": "APPLY"}'
+
+curl http://localhost:8000/api/v1/analytics/overview -H "X-API-Key: $HR_KEY"
+curl "http://localhost:8000/api/v1/analytics/feedback-summary?days=30" -H "X-API-Key: $HR_KEY"
+```
 
 ## Security
 

@@ -1,6 +1,7 @@
 """In-memory stand-ins for OpenAI and Pinecone, so tests make no network calls."""
 
 import hashlib
+import math
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -9,6 +10,7 @@ import httpx
 import openai
 
 from app.services.embedding.pinecone_service import (
+    VectorStoreTimeoutError,
     VectorStoreUnavailableError,
     index_name_for,
     sanitize_metadata,
@@ -41,7 +43,9 @@ class FakeEmbeddings:
         # Inputs containing this marker are rejected as invalid (a 400 from OpenAI).
         self.reject_marker: str | None = None
 
-    async def create(self, *, model: str, input: list[str], dimensions: int) -> _EmbeddingResponse:
+    async def create(
+        self, *, model: str, input: list[str], dimensions: int, **_: Any
+    ) -> _EmbeddingResponse:
         self.calls.append(list(input))
         if self.down:
             raise openai.APIConnectionError(request=_REQUEST)
@@ -72,6 +76,8 @@ class FakeVectorStore:
         self.indexes: dict[str, dict[str, dict[str, Any]]] = {}
         self.unavailable = False
         self.fail_ids: set[str] = set()
+        self.query_times_out = False
+        self.queries: list[dict[str, Any]] = []
 
     async def ensure_index_exists(
         self, tenant_id: uuid.UUID | str, dimension: int | None = None
@@ -132,3 +138,66 @@ class FakeVectorStore:
 
     def vectors(self, tenant_id: uuid.UUID | str) -> dict[str, dict[str, Any]]:
         return self.indexes.get(index_name_for(tenant_id), {})
+
+    async def query(
+        self,
+        tenant_id: uuid.UUID | str,
+        *,
+        top_k: int,
+        vector: list[float] | None = None,
+        id: str | None = None,
+        filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Brute-force cosine search with Pinecone's filter semantics."""
+        self.queries.append({"top_k": top_k, "vector": vector, "id": id, "filter": filter})
+        if self.query_times_out:
+            raise VectorStoreTimeoutError("Pinecone query timed out after 5s (fake)")
+        if self.unavailable:
+            raise VectorStoreUnavailableError("Pinecone is down (fake)")
+        index = self.vectors(tenant_id)
+        if id is not None:
+            if id not in index:
+                return []
+            vector = index[id]["values"]
+        assert vector is not None
+        scored = [
+            {"id": vid, "score": _cosine(vector, v["values"]), "metadata": dict(v["metadata"])}
+            for vid, v in index.items()
+            if _passes(v["metadata"], filter or {})
+        ]
+        return sorted(scored, key=lambda m: m["score"], reverse=True)[:top_k]
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return dot / norm if norm else 0.0
+
+
+def _passes(metadata: dict[str, Any], pinecone_filter: dict[str, Any]) -> bool:
+    return all(
+        _check(op, operand, metadata.get(field))
+        for field, condition in pinecone_filter.items()
+        for op, operand in condition.items()
+    )
+
+
+def _check(op: str, operand: Any, value: Any) -> bool:
+    values = value if isinstance(value, list) else [value]
+    numeric = isinstance(value, int | float) and not isinstance(value, bool)
+    if op == "$eq":
+        return operand in values
+    if op == "$ne":
+        return operand not in values
+    if op == "$in":
+        return any(v in operand for v in values)
+    if op == "$nin":
+        return all(v not in operand for v in values)
+    if not numeric:
+        return False
+    return {
+        "$gt": value > operand,
+        "$gte": value >= operand,
+        "$lt": value < operand,
+        "$lte": value <= operand,
+    }[op]

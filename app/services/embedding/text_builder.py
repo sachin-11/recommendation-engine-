@@ -27,6 +27,18 @@ class TextBuilder:
                 parts.append(f"{field}: {value}")
         return " ".join(parts)
 
+    def build_profile_text(self, profile: dict[str, Any], domain_config: dict[str, Any]) -> str:
+        """Text for a query profile (e.g. a candidate's resume fields).
+
+        Profiles rarely use the item field names ("experience" vs "description"), so every
+        profile field is kept: fields that are also searchable item fields come first, in
+        domain-config order, then the rest in the order given.
+        """
+        searchable = domain_config.get("searchable_fields") or []
+        known = [f for f in searchable if f in profile]
+        ordered = known + [f for f in profile if f not in known]
+        return self.build_embedding_text(profile, {"searchable_fields": ordered})
+
     @staticmethod
     def _stringify(value: Any) -> str:
         if value is None:

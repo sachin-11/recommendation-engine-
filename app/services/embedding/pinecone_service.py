@@ -11,6 +11,7 @@ import uuid
 from functools import lru_cache
 from typing import Any
 
+from pinecone import NotFoundError as PineconeNotFoundError
 from pinecone import Pinecone, ServerlessSpec
 
 from app.core.config import settings
@@ -20,10 +21,24 @@ logger = logging.getLogger(__name__)
 # Pinecone caps a request at 2 MB; 100 vectors of 1536 floats plus metadata stays well under.
 UPSERT_CHUNK_SIZE = 100
 INDEX_READY_TIMEOUT_SECONDS = 300
+# Upper bound for one similarity query, including the index lookup on first use.
+QUERY_TIMEOUT_SECONDS = 5.0
 
 
 class VectorStoreUnavailableError(Exception):
     """Pinecone cannot be reached, or is not configured."""
+
+
+class VectorStoreTimeoutError(VectorStoreUnavailableError):
+    """A query did not finish within QUERY_TIMEOUT_SECONDS."""
+
+
+class IndexNotFoundError(VectorStoreUnavailableError):
+    """The tenant has no index yet (nothing was ever embedded)."""
+
+
+class VectorStoreQueryError(Exception):
+    """Pinecone rejected the query itself, e.g. a filter that does not fit the stored data."""
 
 
 def index_name_for(tenant_id: uuid.UUID | str) -> str:
@@ -52,8 +67,10 @@ class PineconeService:
         *,
         cloud: str | None = None,
         region: str | None = None,
+        query_timeout: float = QUERY_TIMEOUT_SECONDS,
     ) -> None:
         self._client = client
+        self.query_timeout = query_timeout
         self._cloud = cloud or settings.PINECONE_CLOUD
         self._region = region or settings.PINECONE_ENVIRONMENT
         self._indexes: dict[str, Any] = {}
@@ -169,6 +186,48 @@ class PineconeService:
             },
         }
 
+    async def query(
+        self,
+        tenant_id: uuid.UUID | str,
+        *,
+        top_k: int,
+        vector: list[float] | None = None,
+        id: str | None = None,
+        filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Nearest neighbours of `vector`, or of the stored vector with this `id` (one round
+        trip instead of fetch + query). Returns `{id, score, metadata}` dicts, best first.
+
+        A tenant without an index has nothing to recommend, so that returns [].
+        """
+        timeout = self.query_timeout
+        try:
+            async with asyncio.timeout(timeout):
+                index = await self._index(tenant_id)
+                response = await asyncio.to_thread(
+                    index.query,
+                    top_k=top_k,
+                    vector=vector,
+                    id=id,
+                    filter=filter or None,
+                    include_metadata=True,
+                    timeout=timeout,
+                )
+        except IndexNotFoundError:
+            return []
+        except TimeoutError as exc:  # also PineconeTimeoutError, a TimeoutError subclass
+            raise VectorStoreTimeoutError(f"Pinecone query timed out after {timeout:.0f}s") from exc
+        except VectorStoreUnavailableError:
+            raise
+        except Exception as exc:
+            if 400 <= (getattr(exc, "status_code", None) or 0) < 500:
+                raise VectorStoreQueryError(str(exc)) from exc
+            raise VectorStoreUnavailableError(f"Pinecone query failed: {exc}") from exc
+        return [
+            {"id": m.id, "score": float(m.score), "metadata": dict(m.metadata or {})}
+            for m in response.matches
+        ]
+
     async def _index(self, tenant_id: uuid.UUID | str) -> Any:
         name = index_name_for(tenant_id)
         if name not in self._indexes:
@@ -176,6 +235,8 @@ class PineconeService:
                 self._indexes[name] = await asyncio.to_thread(self._pc.Index, name=name)
             except VectorStoreUnavailableError:
                 raise
+            except PineconeNotFoundError as exc:
+                raise IndexNotFoundError(f"Index {name} does not exist") from exc
             except Exception as exc:
                 raise VectorStoreUnavailableError(f"Cannot open index {name}: {exc}") from exc
         return self._indexes[name]

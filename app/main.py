@@ -18,7 +18,9 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import check_database, engine, get_db, ping_database
 from app.core.exceptions import AppException
+from app.core.logging import configure_structlog
 from app.core.redis_client import check_redis, create_redis_client, get_redis
+from app.middleware.request_id import RequestIDMiddleware
 from app.schemas.common import ErrorBody, ErrorDetail, ErrorResponse, HealthResponse
 
 logging.basicConfig(
@@ -26,6 +28,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+configure_structlog()
 
 
 @asynccontextmanager
@@ -157,6 +160,9 @@ def create_app() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    # Added last, so it wraps CORS and every route: all responses carry X-Request-ID.
+    app.add_middleware(RequestIDMiddleware)
 
     register_exception_handlers(app)
     app.include_router(health_router)

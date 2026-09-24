@@ -34,6 +34,7 @@ from app.models import Base
 from app.services.embedding.dependencies import get_embedder, get_vector_store
 from app.services.embedding.openai_embedder import OpenAIEmbedder
 from app.services.embedding.pipeline import EmbeddingPipeline
+from app.services.recommendation.dependencies import get_query_embedder
 from tests.fakes import TEST_DIMENSION, FakeOpenAIClient, FakeVectorStore
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -108,6 +109,7 @@ async def client(
     app.dependency_overrides[get_redis] = lambda: redis
     app.dependency_overrides[get_session_factory] = lambda: session_factory
     app.dependency_overrides[get_embedder] = lambda: embedder
+    app.dependency_overrides[get_query_embedder] = lambda: embedder
     app.dependency_overrides[get_vector_store] = lambda: vector_store
 
     # ASGITransport does not run the lifespan, so no real DB/Redis connections are attempted.

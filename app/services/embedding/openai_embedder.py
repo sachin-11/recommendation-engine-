@@ -74,6 +74,8 @@ class OpenAIEmbedder:
         dimension: int | None = None,
         max_tokens: int | None = None,
         cache_ttl: int | None = None,
+        retry_attempts: int | None = None,
+        request_timeout: float | None = None,
     ) -> None:
         self._client = client
         self._redis = redis
@@ -81,6 +83,9 @@ class OpenAIEmbedder:
         self.dimension = dimension or settings.EMBEDDING_DIMENSION
         self._max_tokens = max_tokens or settings.EMBEDDING_MAX_TOKENS
         self._cache_ttl = cache_ttl or settings.EMBEDDING_CACHE_TTL_SECONDS
+        # Online queries use fewer retries and a timeout; ingestion can afford to wait.
+        self._retry_attempts = retry_attempts
+        self._request_timeout = request_timeout
 
     async def embed_text(self, text: str) -> list[float]:
         return (await self.embed_batch([text]))[0]
@@ -115,11 +120,16 @@ class OpenAIEmbedder:
             async for attempt in AsyncRetrying(
                 retry=retry_if_exception_type(_RETRYABLE),
                 wait=wait_random_exponential(multiplier=1, max=30),
-                stop=stop_after_attempt(RETRY_ATTEMPTS),
+                stop=stop_after_attempt(
+                    min(self._retry_attempts or RETRY_ATTEMPTS, RETRY_ATTEMPTS)
+                ),
             ):
                 with attempt:
                     response = await self._client.embeddings.create(
-                        model=self.model, input=texts, dimensions=self.dimension
+                        model=self.model,
+                        input=texts,
+                        dimensions=self.dimension,
+                        **({"timeout": self._request_timeout} if self._request_timeout else {}),
                     )
         except RetryError as exc:
             cause = exc.last_attempt.exception()
