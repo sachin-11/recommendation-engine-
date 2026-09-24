@@ -18,6 +18,7 @@ from pinecone import NotFoundError as PineconeNotFoundError
 from pinecone import Pinecone, ServerlessSpec
 
 from app.core.config import settings
+from app.core.tracing import traced
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +246,27 @@ class PineconeService:
             "namespaces": {namespace: count},
         }
 
+    @traced(
+        "pinecone.query",
+        run_type="retriever",
+        inputs=lambda a: {
+            "namespace": namespace_for(a["tenant_id"]),
+            "top_k": a["top_k"],
+            "by": "stored item vector" if a.get("id") else "query vector",
+            "item_vector_id": a.get("id"),
+            "filter": a.get("filter"),
+        },
+        outputs=lambda matches: {
+            "documents": [
+                {
+                    "type": "Document",
+                    "page_content": str(m["metadata"].get("external_id", m["id"])),
+                    "metadata": {"score": round(m["score"], 4), **m["metadata"]},
+                }
+                for m in matches
+            ]
+        },
+    )
     async def query(
         self,
         tenant_id: uuid.UUID | str,

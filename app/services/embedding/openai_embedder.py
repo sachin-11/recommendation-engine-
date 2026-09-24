@@ -19,6 +19,7 @@ from tenacity import (
 )
 
 from app.core.config import settings
+from app.core.tracing import MAX_TRACED_TEXTS, add_run_metadata, clip, traced
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,11 @@ _RETRYABLE = (
     openai.APITimeoutError,
     openai.InternalServerError,
 )
+
+
+def _vector_summary(vectors: list[list[float]]) -> dict[str, Any]:
+    """Traces carry vector counts and size, never the vectors."""
+    return {"vectors": len(vectors), "dimensions": len(vectors[0]) if vectors else 0}
 
 
 class EmbeddingUnavailableError(Exception):
@@ -90,6 +96,14 @@ class OpenAIEmbedder:
     async def embed_text(self, text: str) -> list[float]:
         return (await self.embed_batch([text]))[0]
 
+    @traced(
+        "embed",
+        inputs=lambda a: {
+            "count": len(a["texts"]),
+            "texts": [clip(t) for t in a["texts"][:MAX_TRACED_TEXTS]],
+        },
+        outputs=_vector_summary,
+    )
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Embed texts, keeping their order. Cached texts are not sent to OpenAI again."""
         if not texts:
@@ -100,6 +114,7 @@ class OpenAIEmbedder:
             lambda: [truncate_to_tokens(text, self._max_tokens) for text in texts]
         )
         results = await self._cache_get([self._cache_key(text) for text in prepared])
+        add_run_metadata(cache_hits=sum(r is not None for r in results), model=self.model)
 
         # Embed each distinct uncached text once, even if it repeats within the batch.
         uncached = list(
@@ -113,6 +128,12 @@ class OpenAIEmbedder:
 
         return [v if v is not None else fresh[t] for t, v in zip(prepared, results, strict=True)]
 
+    @traced(
+        "openai.embeddings",
+        run_type="embedding",
+        inputs=lambda a: {"count": len(a["texts"]), "texts": [clip(t) for t in a["texts"][:5]]},
+        outputs=_vector_summary,
+    )
     async def _request(self, texts: list[str]) -> list[list[float]]:
         if self._client is None:
             raise EmbeddingUnavailableError("OPENAI_API_KEY is not configured")

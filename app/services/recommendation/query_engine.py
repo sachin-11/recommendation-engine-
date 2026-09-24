@@ -21,6 +21,7 @@ from app.core.exceptions import (
     NotFoundError,
     ServiceUnavailableError,
 )
+from app.core.tracing import clip, traced
 from app.models.item import EmbeddingStatus, Item
 from app.models.recommendation_log import QueryType
 from app.models.tenant import Tenant
@@ -96,6 +97,35 @@ def _upstream_errors() -> Iterator[None]:
         raise BadRequestError(f"The query text was rejected by the embedding model: {exc}") from exc
 
 
+def _trace_inputs(**fields: str) -> Any:
+    """Inputs for a recommendation trace: tenant id plus the named call arguments."""
+
+    def build(args: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {"tenant_id": str(args["tenant"].id)}
+        for label, arg in fields.items():
+            value = args.get(arg)
+            if value is not None:
+                out[label] = clip(value) if isinstance(value, str) else value
+        return out
+
+    return build
+
+
+def _trace_recommendation(rec: Recommendation) -> dict[str, Any]:
+    return {
+        "cache": rec.cache_status,
+        "results": [
+            {
+                "rank": r["rank"],
+                "external_id": r["external_id"],
+                "score": r["score"],
+                "label": r["score_label"],
+            }
+            for r in rec.results
+        ],
+    }
+
+
 class QueryEngine:
     def __init__(
         self,
@@ -118,6 +148,11 @@ class QueryEngine:
 
     # --- Query types ---
 
+    @traced(
+        "recommend.by_text",
+        inputs=_trace_inputs(query="query_text", top_k="top_k", filters="filters"),
+        outputs=_trace_recommendation,
+    )
     async def recommend_by_text(
         self,
         query_text: str,
@@ -136,6 +171,11 @@ class QueryEngine:
             lambda pinecone_filter: self._search_text(query_text, tenant, top_k, pinecone_filter),
         )
 
+    @traced(
+        "recommend.by_item",
+        inputs=_trace_inputs(external_id="external_id", top_k="top_k", filters="filters"),
+        outputs=_trace_recommendation,
+    )
     async def recommend_by_item_id(
         self,
         external_id: str,
@@ -156,6 +196,11 @@ class QueryEngine:
             lambda pinecone_filter: self._search_similar(item, tenant, top_k, pinecone_filter),
         )
 
+    @traced(
+        "recommend.by_profile",
+        inputs=_trace_inputs(profile="profile", top_k="top_k", filters="filters"),
+        outputs=_trace_recommendation,
+    )
     async def recommend_by_profile(
         self,
         profile: dict[str, Any],
@@ -178,6 +223,15 @@ class QueryEngine:
             lambda pinecone_filter: self._search_text(text, tenant, top_k, pinecone_filter),
         )
 
+    @traced(
+        "recommend.batch",
+        inputs=lambda a: {
+            "tenant_id": str(a["tenant"].id),
+            "top_k": a.get("top_k"),
+            "queries": [{"id": q.id, "query": clip(q.query)} for q in a["queries"]],
+        },
+        outputs=lambda recs: {qid: _trace_recommendation(r) for qid, r in recs.items()},
+    )
     async def recommend_batch(
         self, queries: list[BatchQuery], tenant: Tenant, top_k: int = 10
     ) -> dict[str, Recommendation]:

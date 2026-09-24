@@ -79,6 +79,23 @@ class Settings(BaseSettings):
     HEALTH_CHECK_TIMEOUT_SECONDS: float = Field(default=2.0, gt=0)
     # Port for the worker's Prometheus metrics; 0 disables them.
     WORKER_METRICS_PORT: int = Field(default=9100, ge=0, le=65535)
+    # LangSmith tracing of embeddings, vector search and recommendations (optional).
+    # The LANGCHAIN_* names used by older LangSmith setups are accepted too.
+    LANGSMITH_TRACING: bool = Field(
+        default=False, validation_alias=AliasChoices("LANGSMITH_TRACING", "LANGCHAIN_TRACING_V2")
+    )
+    LANGSMITH_API_KEY: SecretStr | None = Field(
+        default=None, validation_alias=AliasChoices("LANGSMITH_API_KEY", "LANGCHAIN_API_KEY")
+    )
+    LANGSMITH_PROJECT: str = Field(
+        default="recoengine",
+        validation_alias=AliasChoices("LANGSMITH_PROJECT", "LANGCHAIN_PROJECT"),
+    )
+    LANGSMITH_ENDPOINT: str | None = Field(
+        default=None, validation_alias=AliasChoices("LANGSMITH_ENDPOINT", "LANGCHAIN_ENDPOINT")
+    )
+    # Keep query and item text out of traces (only timings and counts are sent).
+    LANGSMITH_HIDE_INPUTS: bool = False
     # Error tracking. Leave empty to disable.
     SENTRY_DSN: SecretStr | None = None
     SENTRY_TRACES_SAMPLE_RATE: float = Field(default=0.0, ge=0, le=1)
@@ -93,7 +110,12 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
-        "OPENAI_API_KEY", "PINECONE_API_KEY", "SENTRY_DSN", "ADMIN_API_KEY", mode="before"
+        "OPENAI_API_KEY",
+        "PINECONE_API_KEY",
+        "SENTRY_DSN",
+        "ADMIN_API_KEY",
+        "LANGSMITH_API_KEY",
+        mode="before",
     )
     @classmethod
     def _blank_key_is_unset(cls, value: object) -> object:

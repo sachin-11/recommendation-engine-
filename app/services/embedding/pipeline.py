@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_object_session, async_ses
 from app.core.config import settings
 from app.core.exceptions import NotFoundError
 from app.core.metrics import EMBEDDING_PIPELINE_DURATION
+from app.core.tracing import traced
 from app.models.base import utcnow
 from app.models.item import EmbeddingStatus, Item
 from app.models.item_batch import BatchStatus, ItemBatch
@@ -89,6 +90,20 @@ class EmbeddingPipeline:
         [result] = await self.process_items(session, [item], tenant)
         return result.status is EmbeddingStatus.DONE
 
+    @traced(
+        "embedding_pipeline",
+        inputs=lambda a: {
+            "tenant_id": str(a["tenant"].id),
+            "items": len(a["items"]),
+            "external_ids": [i.external_id for i in a["items"][:50]],
+        },
+        outputs=lambda results: {
+            "statuses": {
+                s: sum(r.status == s for r in results) for s in {r.status for r in results}
+            },
+            "errors": {r.external_id: r.error for r in results if r.error},
+        },
+    )
     async def process_items(
         self, session: AsyncSession, items: list[Item], tenant: Tenant
     ) -> list[ItemResult]:

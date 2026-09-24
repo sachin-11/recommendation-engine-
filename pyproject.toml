@@ -22,6 +22,7 @@ dependencies = [
     "structlog (>=24.4)",
     "prometheus-client (>=0.21)",
     "sentry-sdk[fastapi] (>=2.19)",
+    "langsmith (>=0.3)",
 ]
 
 [tool.poetry]

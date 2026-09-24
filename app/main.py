@@ -23,6 +23,7 @@ from app.core.database import check_database, engine, get_db, ping_database
 from app.core.exceptions import AppException
 from app.core.logging import configure_sentry, configure_structlog
 from app.core.redis_client import check_redis, create_redis_client, get_redis
+from app.core.tracing import configure_tracing
 from app.middleware.request_id import RequestIDMiddleware
 from app.schemas.common import ErrorBody, ErrorDetail, ErrorResponse, HealthResponse
 from app.services.embedding.pinecone_service import get_pinecone_service
@@ -34,6 +35,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 configure_structlog()
 configure_sentry("api")
+configure_tracing()
 
 
 @asynccontextmanager

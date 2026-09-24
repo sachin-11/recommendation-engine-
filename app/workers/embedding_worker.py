@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
 from app.core.logging import configure_sentry
 from app.core.redis_client import create_redis_client
+from app.core.tracing import configure_tracing
 from app.services.embedding.openai_embedder import OpenAIEmbedder, get_openai_client
 from app.services.embedding.pinecone_service import get_pinecone_service
 from app.services.embedding.pipeline import EmbeddingPipeline, UpstreamUnavailableError
@@ -35,6 +36,7 @@ ERROR_BACKOFF_SECONDS = 10.0
 
 async def run(stop: asyncio.Event) -> None:
     configure_sentry("worker")
+    configure_tracing()
     if settings.WORKER_METRICS_PORT:
         start_http_server(settings.WORKER_METRICS_PORT)
     redis = await create_redis_client()

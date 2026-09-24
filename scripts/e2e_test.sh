@@ -6,7 +6,7 @@
 #
 # Registers a throwaway tenant, uploads 10 HR jobs, waits for embedding, runs by-text and
 # by-profile recommendations, sends feedback, checks analytics, then deletes the tenant
-# (and its vector index). Prints PASS/FAIL per step; exits 1 if any step failed.
+# (and its vectors). Prints PASS/FAIL per step; exits 1 if any step failed.
 # Needs: bash, curl, and python3 (or python) for JSON parsing.
 set -uo pipefail
 
@@ -53,7 +53,7 @@ json() {
 cleanup() {
   [ -z "$API_KEY" ] && return
   request POST /me/delete "{\"confirm_email\": \"$EMAIL\", \"password\": \"$PASSWORD\"}"
-  if [ "$STATUS" = "204" ]; then echo "cleanup: test tenant and its index deleted"; else echo "cleanup: delete returned $STATUS"; fi
+  if [ "$STATUS" = "204" ]; then echo "cleanup: test tenant and its vectors deleted"; else echo "cleanup: delete returned $STATUS"; fi
   API_KEY=""
 }
 
