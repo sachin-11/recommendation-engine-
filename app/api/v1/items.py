@@ -8,10 +8,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, Response, 
 
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ServiceUnavailableError
-from app.middleware.auth import AuthDep, authenticate
+from app.middleware.auth import AuthDep, authenticate, require_role
 from app.middleware.rate_limit import RateLimiterDep, daily_item_limit, enforce_request_rate
 from app.models.item import EmbeddingStatus
 from app.models.item_batch import ItemBatch
+from app.models.user import Role
 from app.schemas.account import BulkDeleteRequest, BulkDeleteResponse
 from app.schemas.common import ERROR_RESPONSES, ErrorResponse
 from app.schemas.item import (
@@ -40,6 +41,8 @@ AUTH_RESPONSES: dict[int | str, dict[str, object]] = {
 }
 # Every tenant-facing router: API key auth, then the per-key request rate limit.
 PROTECTED = [Depends(authenticate), Depends(enforce_request_rate)]
+# Changing items or the index needs the Developer role (integration keys have it).
+WRITE = require_role(Role.DEVELOPER)
 
 items_router = APIRouter(
     prefix="/items", tags=["items"], dependencies=PROTECTED, responses=AUTH_RESPONSES
@@ -75,6 +78,7 @@ def _queued(batch: ItemBatch, **extra: object) -> dict[str, object]:
 
 @items_router.post(
     "/upload",
+    dependencies=[WRITE],
     summary="Upload items (JSON)",
     responses={
         202: {"model": AsyncUploadResponse, "description": "Queued (async=true)"},
@@ -119,6 +123,7 @@ async def upload_items(
 
 @items_router.post(
     "/upload-csv",
+    dependencies=[WRITE],
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload items from a CSV file (always async)",
     responses={400: {"model": ErrorResponse, "description": "Invalid CSV, with column hints"}},
@@ -168,6 +173,7 @@ async def list_items(
 
 @items_router.post(
     "/bulk-delete",
+    dependencies=[WRITE],
     summary="Delete up to 1000 items from the database and Pinecone",
     responses={
         503: {"model": ErrorResponse, "description": "Pinecone unavailable; nothing deleted"}
@@ -182,6 +188,7 @@ async def bulk_delete_items(
 
 @items_router.delete(
     "",
+    dependencies=[WRITE],
     summary="Delete ALL of this tenant's items from the database and Pinecone",
     responses={
         503: {"model": ErrorResponse, "description": "Pinecone unavailable; nothing deleted"}
@@ -201,6 +208,7 @@ async def get_item(external_id: str, service: ItemServiceDep) -> ItemResponse:
 
 @items_router.delete(
     "/{external_id}",
+    dependencies=[WRITE],
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an item from the database and Pinecone",
     responses={
@@ -233,6 +241,7 @@ async def index_stats(
 
 @index_router.post(
     "/rebuild",
+    dependencies=[WRITE],
     status_code=status.HTTP_202_ACCEPTED,
     summary="Re-embed every item of this tenant (always async)",
 )

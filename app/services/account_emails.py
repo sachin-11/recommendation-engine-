@@ -1,4 +1,4 @@
-"""Account emails: verify address, reset password, password changed.
+"""Account emails: verify address, reset password, password changed, team invitation.
 
 Each has a plain-text part (what most security-conscious clients show) and a small inline
 HTML part. Links point at the dashboard, which calls the API with the token.
@@ -9,7 +9,9 @@ from urllib.parse import urlencode
 
 from app.core.config import settings
 from app.core.email import EmailMessage
+from app.models.invitation import Invitation
 from app.models.tenant import Tenant
+from app.models.user import User
 
 PRODUCT = "RecoEngine"
 
@@ -41,29 +43,29 @@ def _html(heading: str, paragraphs: list[str], button: tuple[str, str] | None, f
     )
 
 
-def verification_email(tenant: Tenant, token: str) -> EmailMessage:
+def verification_email(user: User, token: str) -> EmailMessage:
     url = dashboard_link("/verify-email", token=token)
     hours = settings.EMAIL_VERIFICATION_TTL_HOURS
     lines = [
-        f"Hi {tenant.name},",
-        f"Confirm that {tenant.email} is your address to finish setting up {PRODUCT}. "
+        f"Hi {user.name},",
+        f"Confirm that {user.email} is your address to finish setting up {PRODUCT}. "
         "Once it is confirmed you can create API keys and upload your full catalogue.",
     ]
     footer = f"The link works once and expires in {hours} hours. Didn't sign up? Ignore this email."
     return EmailMessage(
-        to=tenant.email,
+        to=user.email,
         subject=f"Confirm your email for {PRODUCT}",
         text="\n\n".join([*lines, f"Confirm your email: {url}", footer]),
         html=_html("Confirm your email", lines, ("Confirm email", url), footer),
     )
 
 
-def password_reset_email(tenant: Tenant, token: str) -> EmailMessage:
+def password_reset_email(user: User, token: str) -> EmailMessage:
     url = dashboard_link("/reset-password", token=token)
     minutes = settings.PASSWORD_RESET_TTL_MINUTES
     lines = [
-        f"Hi {tenant.name},",
-        f"Someone asked to reset the {PRODUCT} password for {tenant.email}. "
+        f"Hi {user.name},",
+        f"Someone asked to reset the {PRODUCT} password for {user.email}. "
         "Choose a new password with the link below. Your API keys keep working; "
         "dashboard sessions are signed out.",
     ]
@@ -72,25 +74,46 @@ def password_reset_email(tenant: Tenant, token: str) -> EmailMessage:
         "Didn't ask for this? Ignore this email; your password stays the same."
     )
     return EmailMessage(
-        to=tenant.email,
+        to=user.email,
         subject=f"Reset your {PRODUCT} password",
         text="\n\n".join([*lines, f"Reset your password: {url}", footer]),
         html=_html("Reset your password", lines, ("Choose a new password", url), footer),
     )
 
 
-def password_changed_email(tenant: Tenant) -> EmailMessage:
+def password_changed_email(user: User) -> EmailMessage:
     url = dashboard_link("/forgot-password")
     lines = [
-        f"Hi {tenant.name},",
-        f"The {PRODUCT} password for {tenant.email} was just changed and every dashboard "
+        f"Hi {user.name},",
+        f"The {PRODUCT} password for {user.email} was just changed and every dashboard "
         "session was signed out.",
         "If this wasn't you, reset your password now and revoke any API keys you don't recognise.",
     ]
     footer = "You're receiving this because it is a security change on your account."
     return EmailMessage(
-        to=tenant.email,
+        to=user.email,
         subject=f"Your {PRODUCT} password was changed",
         text="\n\n".join([*lines, f"Reset your password: {url}", footer]),
         html=_html("Your password was changed", lines, ("Reset password", url), footer),
+    )
+
+
+def invitation_email(
+    invitation: Invitation, workspace: Tenant, inviter: User | None, token: str
+) -> EmailMessage:
+    url = dashboard_link("/accept-invite", token=token)
+    days = settings.INVITATION_TTL_DAYS
+    who = f"{inviter.name} ({inviter.email})" if inviter else "An administrator"
+    role = invitation.role.title()
+    lines = [
+        f"{who} invited you to join the {workspace.name} workspace on {PRODUCT} as {role}.",
+        f"{PRODUCT} gives your team recommendations for any catalogue. Accept the invitation "
+        "to choose your name and password.",
+    ]
+    footer = f"The invitation works once and expires in {days} days. Not expecting it? Ignore it."
+    return EmailMessage(
+        to=invitation.email,
+        subject=f"You're invited to {workspace.name} on {PRODUCT}",
+        text="\n\n".join([*lines, f"Accept the invitation: {url}", footer]),
+        html=_html(f"Join {workspace.name}", lines, ("Accept invitation", url), footer),
     )

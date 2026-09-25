@@ -16,6 +16,7 @@ import { Input, NativeSelect } from "@/components/ui/input";
 import { EmptyState, PageHeader } from "@/components/ui/misc";
 import { toastApiError } from "@/lib/api";
 import { useMe } from "@/lib/hooks/account";
+import { can, needsRole } from "@/lib/roles";
 import { useDeleteItems, useItems } from "@/lib/hooks/items";
 import { formatNumber } from "@/lib/utils";
 import type { EmbeddingStatus } from "@/types";
@@ -35,6 +36,8 @@ function ItemsPage() {
   const router = useRouter();
   const params = useSearchParams();
   const { data: me } = useMe();
+  const canWrite = can(me, "DEVELOPER");
+  const writeTitle = me && !canWrite ? needsRole("DEVELOPER") : undefined;
   const [searchInput, setSearchInput] = React.useState("");
   const search = useDebounced(searchInput);
   const [status, setStatus] = React.useState<EmbeddingStatus | "">("");
@@ -75,10 +78,10 @@ function ItemsPage() {
         description={me ? `Your ${me.domain_config.item_label}s and their embedding status.` : undefined}
         actions={
           <>
-            <Button variant="outline" onClick={() => setUpload("json")} disabled={!me}>
+            <Button variant="outline" onClick={() => setUpload("json")} disabled={!canWrite} title={writeTitle}>
               <Braces /> Upload JSON
             </Button>
-            <Button onClick={() => setUpload("csv")} disabled={!me}>
+            <Button onClick={() => setUpload("csv")} disabled={!canWrite} title={writeTitle}>
               <FileSpreadsheet /> Upload CSV
             </Button>
           </>
@@ -112,7 +115,7 @@ function ItemsPage() {
               </option>
             ))}
           </NativeSelect>
-          {selected.size > 0 && (
+          {selected.size > 0 && canWrite && (
             <Button variant="destructive" onClick={() => setConfirmDelete(true)}>
               <Trash2 /> Delete {selected.size}
             </Button>
@@ -180,10 +183,10 @@ function ItemsPage() {
                 description="Upload your catalogue as JSON or CSV. Each item is embedded and becomes recommendable within seconds."
                 action={
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setUpload("json")}>
+                    <Button variant="outline" onClick={() => setUpload("json")} disabled={!canWrite} title={writeTitle}>
                       <Braces /> Upload JSON
                     </Button>
-                    <Button onClick={() => setUpload("csv")}>
+                    <Button onClick={() => setUpload("csv")} disabled={!canWrite} title={writeTitle}>
                       <FileSpreadsheet /> Upload CSV
                     </Button>
                   </div>
@@ -197,13 +200,13 @@ function ItemsPage() {
       {me && (
         <>
           <UploadModal
-            open={upload === "json"}
+            open={canWrite && upload === "json"}
             onOpenChange={(open) => setUpload(open ? "json" : null)}
             tenant={me}
             onQueued={setBatchId}
           />
           <CSVUploader
-            open={upload === "csv"}
+            open={canWrite && upload === "csv"}
             onOpenChange={(open) => setUpload(open ? "csv" : null)}
             tenant={me}
             onQueued={setBatchId}

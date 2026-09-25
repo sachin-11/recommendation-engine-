@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     UNVERIFIED_DAILY_ITEM_LIMIT: int = Field(default=100, gt=0)
     EMAIL_VERIFICATION_TTL_HOURS: int = Field(default=24, gt=0)
     PASSWORD_RESET_TTL_MINUTES: int = Field(default=60, gt=0)
+    INVITATION_TTL_DAYS: int = Field(default=7, gt=0)
     # Failed logins for one email before it is locked for LOGIN_LOCKOUT_MINUTES.
     LOGIN_MAX_FAILURES: int = Field(default=5, gt=0)
     LOGIN_LOCKOUT_MINUTES: int = Field(default=15, gt=0)

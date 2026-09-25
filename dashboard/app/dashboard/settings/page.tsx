@@ -19,6 +19,7 @@ import { toastApiError } from "@/lib/api";
 import { presetFor } from "@/lib/domains";
 import { useDeleteAccount, useMe, useUpdateDomainConfig } from "@/lib/hooks/account";
 import { useDeleteAllItems, useIndexStats, useRebuildIndex } from "@/lib/hooks/items";
+import { can, needsRole } from "@/lib/roles";
 import { formatNumber } from "@/lib/utils";
 import type { DomainConfig, Tenant } from "@/types";
 
@@ -100,10 +101,19 @@ function DomainConfigSection({ tenant }: { tenant: Tenant }) {
             Discard changes
           </Button>
         )}
-        <Button variant="outline" onClick={() => setConfirmRebuild(true)}>
+        <Button
+          variant="outline"
+          onClick={() => setConfirmRebuild(true)}
+          disabled={!can(tenant, "DEVELOPER")}
+          title={can(tenant, "DEVELOPER") ? undefined : needsRole("DEVELOPER")}
+        >
           <RefreshCw /> Rebuild index
         </Button>
-        <Button onClick={onSave} disabled={!dirty || invalid || save.isPending}>
+        <Button
+          onClick={onSave}
+          disabled={!dirty || invalid || save.isPending || !can(tenant, "ADMIN")}
+          title={can(tenant, "ADMIN") ? undefined : needsRole("ADMIN")}
+        >
           {save.isPending ? <Loader2 className="animate-spin" /> : <Save />}
           Save config
         </Button>
@@ -155,16 +165,25 @@ function DangerZone({ tenant }: { tenant: Tenant }) {
             <p className="font-medium">Delete all items</p>
             <p className="text-sm text-muted-foreground">Removes every item and its vector. Keys and settings stay.</p>
           </div>
-          <Button variant="outline" className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setDialog("items")}>
+          <Button
+            variant="outline"
+            className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setDialog("items")}
+            disabled={!can(tenant, "DEVELOPER")}
+            title={can(tenant, "DEVELOPER") ? undefined : needsRole("DEVELOPER")}
+          >
             Delete all items
           </Button>
         </div>
         <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-medium">Delete account</p>
-            <p className="text-sm text-muted-foreground">Deletes the tenant, items, API keys, logs and the vector index.</p>
+            <p className="text-sm text-muted-foreground">
+              Deletes the workspace, its members, items, API keys, logs and the vector index.
+              {tenant.role !== "OWNER" && " Only the owner can do this."}
+            </p>
           </div>
-          <Button variant="destructive" onClick={() => setDialog("account")}>
+          <Button variant="destructive" onClick={() => setDialog("account")} disabled={tenant.role !== "OWNER"}>
             Delete account
           </Button>
         </div>

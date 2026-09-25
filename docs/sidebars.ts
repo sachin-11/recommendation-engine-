@@ -10,6 +10,7 @@ const sidebars: SidebarsConfig = {
         "getting-started/introduction",
         "getting-started/quickstart",
         "getting-started/authentication",
+        "getting-started/team",
       ],
     },
     {

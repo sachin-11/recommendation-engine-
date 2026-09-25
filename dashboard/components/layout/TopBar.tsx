@@ -20,6 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { presetFor } from "@/lib/domains";
 import { useLogout, useMe } from "@/lib/hooks/account";
+import { ROLE_INFO } from "@/lib/roles";
 
 function MobileNav() {
   const [open, setOpen] = React.useState(false);
@@ -68,7 +69,8 @@ export function TopBar() {
   const { data: me, isLoading } = useMe();
   const logout = useLogout();
   const router = useRouter();
-  const initials = (me?.name ?? "?")
+  const person = me?.user?.name ?? me?.name ?? "?";
+  const initials = person
     .split(/\s+/)
     .map((word) => word[0])
     .join("")
@@ -103,8 +105,13 @@ export function TopBar() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuLabel>
-            <p className="truncate font-medium">{me?.name}</p>
-            <p className="truncate text-xs text-muted-foreground">{me?.email}</p>
+            <p className="truncate font-medium">{me?.user?.name ?? "Signed in with an API key"}</p>
+            <p className="truncate text-xs text-muted-foreground">{me?.user?.email ?? me?.email}</p>
+            {me && (
+              <p className="mt-1 text-xs font-normal text-muted-foreground">
+                {ROLE_INFO[me.role].label} · {me.name}
+              </p>
+            )}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem

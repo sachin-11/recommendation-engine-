@@ -15,12 +15,12 @@ class AuthTokenPurpose(StrEnum):
 
 
 class AuthToken(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
-    """A single-use link token sent by email. Only its keyed hash is stored."""
+    """A single-use link token sent to a user by email. Only its keyed hash is stored."""
 
     __tablename__ = "auth_tokens"
 
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     purpose: Mapped[AuthTokenPurpose] = mapped_column(
         SAEnum(AuthTokenPurpose, name="auth_token_purpose"), nullable=False

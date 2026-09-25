@@ -22,7 +22,8 @@ class DomainType(StrEnum):
 
 
 class Tenant(BaseEntity):
-    """A business account. `domain_config` describes the shape of the tenant's items."""
+    """A workspace (business account). People sign in as its users; `domain_config`
+    describes the shape of its items."""
 
     __tablename__ = "tenants"
 
@@ -37,9 +38,7 @@ class Tenant(BaseEntity):
     is_active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default=true()
     )
-    # Dashboard login. Null for tenants created through the API without a password.
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Set when the owner opens the verification link (or resets their password).
+    # The owner's address (kept in step with the OWNER user). Set when the owner verifies it.
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -50,10 +49,6 @@ class Tenant(BaseEntity):
         passive_deletes=True,
         lazy="raise",
     )
-
-    @property
-    def has_password(self) -> bool:
-        return self.password_hash is not None
 
     @property
     def email_verified(self) -> bool:

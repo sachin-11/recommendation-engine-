@@ -9,6 +9,7 @@ const fieldName = z
   .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/, "Use letters, digits and underscores; start with a letter");
 
 export const accountSchema = z.object({
+  owner_name: z.string().trim().min(1, "Your name is required").max(255),
   name: z.string().trim().min(1, "Business name is required").max(255),
   email: z.string().trim().toLowerCase().email("Enter a valid email address"),
   password: z.string().min(8, "Use at least 8 characters").max(128),
@@ -36,6 +37,24 @@ export const resetPasswordSchema = z
     path: ["confirm"],
   });
 export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>;
+
+export const acceptInviteSchema = z
+  .object({
+    name: z.string().trim().min(1, "Your name is required").max(255),
+    password: z.string().min(8, "Use at least 8 characters").max(128),
+    confirm: z.string(),
+  })
+  .refine((values) => values.password === values.confirm, {
+    message: "Passwords do not match",
+    path: ["confirm"],
+  });
+export type AcceptInviteValues = z.infer<typeof acceptInviteSchema>;
+
+export const inviteSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email address"),
+  role: z.enum(["ADMIN", "DEVELOPER", "VIEWER"]),
+});
+export type InviteValues = z.infer<typeof inviteSchema>;
 
 export const apiKeyLoginSchema = z.object({
   apiKey: z

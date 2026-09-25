@@ -71,6 +71,17 @@ function AccountStep({
   return (
     <form onSubmit={form.handleSubmit(onNext)} className="space-y-4" noValidate>
       <div className="space-y-2">
+        <Label htmlFor="owner_name">Your name</Label>
+        <Input
+          id="owner_name"
+          autoComplete="name"
+          placeholder="Priya Sharma"
+          aria-invalid={Boolean(errors.owner_name)}
+          {...form.register("owner_name")}
+        />
+        <FieldError message={errors.owner_name?.message} />
+      </div>
+      <div className="space-y-2">
         <Label htmlFor="name">Business name</Label>
         <Input id="name" placeholder="Acme Hiring" aria-invalid={Boolean(errors.name)} {...form.register("name")} />
         <FieldError message={errors.name?.message} />

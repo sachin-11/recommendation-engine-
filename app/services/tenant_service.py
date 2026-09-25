@@ -1,4 +1,4 @@
-"""Tenant and API-key business logic."""
+"""Tenant (workspace) and API-key business logic."""
 
 import uuid
 from typing import Annotated
@@ -14,6 +14,7 @@ from app.core.security import generate_api_key
 from app.models.api_key import ApiKey
 from app.models.base import utcnow
 from app.models.tenant import Tenant
+from app.models.user import Role, User
 from app.schemas.tenant import ApiKeyCreate, TenantCreate
 
 
@@ -24,26 +25,42 @@ class TenantService:
     # --- Tenants ---
 
     async def create_tenant(
-        self, data: TenantCreate, password_hash: str | None = None, *, verified: bool = False
-    ) -> Tenant:
+        self,
+        data: TenantCreate,
+        password_hash: str | None = None,
+        *,
+        verified: bool = False,
+        owner_name: str | None = None,
+    ) -> tuple[Tenant, User]:
+        """Create the workspace and its OWNER user (same email) in one transaction."""
         if await self._email_exists(data.email):
-            raise ConflictError(f"A tenant with email '{data.email}' already exists")
+            raise ConflictError(f"An account with email '{data.email}' already exists")
 
+        verified_at = utcnow() if verified else None
         tenant = Tenant(
             name=data.name,
             email=data.email,
             domain_type=data.domain_type,
             domain_config=data.resolved_domain_config().model_dump(mode="json"),
-            password_hash=password_hash,
-            email_verified_at=utcnow() if verified else None,
+            email_verified_at=verified_at,
         )
         self._session.add(tenant)
+        await self._session.flush()
+        owner = User(
+            tenant_id=tenant.id,
+            email=data.email,
+            name=owner_name or data.name,
+            role=Role.OWNER,
+            password_hash=password_hash,
+            email_verified_at=verified_at,
+        )
+        self._session.add(owner)
         try:
             await self._session.commit()
         except IntegrityError as exc:  # concurrent registration with the same email
             await self._session.rollback()
-            raise ConflictError(f"A tenant with email '{data.email}' already exists") from exc
-        return tenant
+            raise ConflictError(f"An account with email '{data.email}' already exists") from exc
+        return tenant, owner
 
     async def get_tenant(self, tenant_id: uuid.UUID) -> Tenant:
         tenant = await self._session.get(Tenant, tenant_id)
@@ -52,12 +69,17 @@ class TenantService:
         return tenant
 
     async def _email_exists(self, email: str) -> bool:
-        result = await self._session.execute(select(exists().where(Tenant.email == email)))
-        return bool(result.scalar())
+        """Emails are unique across workspaces and users (a user belongs to one workspace)."""
+        for column in (Tenant.email, User.email):
+            if (await self._session.execute(select(exists().where(column == email)))).scalar():
+                return True
+        return False
 
     # --- API keys ---
 
-    async def create_api_key(self, tenant_id: uuid.UUID, data: ApiKeyCreate) -> tuple[ApiKey, str]:
+    async def create_api_key(
+        self, tenant_id: uuid.UUID, data: ApiKeyCreate, created_by: User | None = None
+    ) -> tuple[ApiKey, str]:
         """Create a key and return it together with the plain key (the only time it exists)."""
         tenant = await self.get_tenant(tenant_id)
         if not tenant.is_active:
@@ -70,6 +92,7 @@ class TenantService:
             key_hash=generated.key_hash,
             key_prefix=generated.key_prefix,
             expires_at=data.expires_at,
+            created_by_id=created_by.id if created_by else None,
         )
         self._session.add(api_key)
         await self._session.commit()

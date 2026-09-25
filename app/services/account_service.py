@@ -1,11 +1,12 @@
-"""Dashboard accounts: registration with a password, email verification, login sessions,
-password reset, and self-service management of the signed-in tenant (API keys, domain
-config, deletion).
+"""Dashboard accounts: registration, email verification, login sessions, password reset,
+and self-service management of the signed-in workspace (API keys, domain config, deletion).
 
-A dashboard session is an ordinary API key flagged `is_session` with a 7-day expiry, so
-every existing X-API-Key route works for the dashboard unchanged.
+People sign in as users; a workspace (tenant) has one OWNER and any number of other members.
+A dashboard session is an ordinary API key flagged `is_session`, tied to its user and
+expiring after 7 days, so every X-API-Key route works for the dashboard unchanged.
 """
 
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Annotated
 
@@ -28,6 +29,7 @@ from app.models.api_key import ApiKey
 from app.models.auth_token import AuthTokenPurpose
 from app.models.base import utcnow
 from app.models.tenant import Tenant
+from app.models.user import Role, User
 from app.schemas.account import RegisterRequest
 from app.schemas.tenant import DomainConfig, TenantCreate
 from app.services.auth_tokens import AuthTokenService
@@ -40,102 +42,123 @@ SESSION_KEY_NAME = "Dashboard session"
 _REBUILD_FIELDS = ("primary_embedding_field", "searchable_fields", "filter_fields")
 
 
+@dataclass(frozen=True, slots=True)
+class Session:
+    tenant: Tenant
+    user: User
+    key: ApiKey
+    plain_key: str
+
+
 class AccountService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._tenants = TenantService(session)
 
-    async def register(self, data: RegisterRequest) -> tuple[Tenant, ApiKey, str, str]:
-        """Create the tenant and sign it in.
+    async def register(self, data: RegisterRequest) -> tuple[Session, str]:
+        """Create the workspace and its owner, and sign the owner in.
 
-        Returns (tenant, session key, plain session key, email verification token). API keys
-        for integrations are created from the dashboard once the email is verified.
+        Returns the session and an email verification token. Integration API keys are
+        created from the dashboard once the email is verified.
         """
-        tenant_data = TenantCreate.model_validate(data.model_dump(exclude={"password"}))
-        tenant = await self._tenants.create_tenant(tenant_data, hash_password(data.password))
-        session_key, plain_key = await self._create_session(tenant)
-        token = await self.issue_verification(tenant)
-        return tenant, session_key, plain_key, token
+        tenant_data = TenantCreate.model_validate(
+            data.model_dump(exclude={"password", "owner_name"})
+        )
+        tenant, owner = await self._tenants.create_tenant(
+            tenant_data, hash_password(data.password), owner_name=data.owner_name
+        )
+        session = await self.start_session(tenant, owner)
+        return session, await self.issue_verification(owner)
 
-    async def login(self, email: str, password: str) -> tuple[Tenant, ApiKey, str]:
-        tenant = await self._session.scalar(select(Tenant).where(Tenant.email == email))
+    async def login(self, email: str, password: str) -> Session:
+        user = await self._session.scalar(select(User).where(User.email == email))
         # verify_password runs even for unknown emails, so timing does not reveal accounts.
-        if not verify_password(password, tenant.password_hash if tenant else None) or not tenant:
+        if not verify_password(password, user.password_hash if user else None) or not user:
             raise UnauthorizedError("Invalid email or password")
-        if not tenant.is_active:
+        tenant = await self._session.get(Tenant, user.tenant_id)
+        if tenant is None or not tenant.is_active:
             raise ForbiddenError("Tenant is inactive")
-        session_key, plain_key = await self._create_session(tenant)
-        return tenant, session_key, plain_key
+        if not user.is_active:
+            raise ForbiddenError("This user has been deactivated")
+        return await self.start_session(tenant, user)
 
-    async def _create_session(self, tenant: Tenant) -> tuple[ApiKey, str]:
+    async def start_session(self, tenant: Tenant, user: User) -> Session:
         generated = generate_api_key()
-        session_key = ApiKey(
+        key = ApiKey(
             tenant_id=tenant.id,
+            user_id=user.id,
             name=SESSION_KEY_NAME,
             key_hash=generated.key_hash,
             key_prefix=generated.key_prefix,
             expires_at=utcnow() + SESSION_TTL,
             is_session=True,
         )
-        self._session.add(session_key)
+        self._session.add(key)
+        user.last_login_at = utcnow()
         await self._session.commit()
-        return session_key, generated.plain_key
-
-    # --- Email verification ---
-
-    async def issue_verification(self, tenant: Tenant) -> str:
-        ttl = timedelta(hours=settings.EMAIL_VERIFICATION_TTL_HOURS)
-        return await AuthTokenService(self._session).issue(
-            tenant, AuthTokenPurpose.VERIFY_EMAIL, ttl
-        )
-
-    async def resend_verification(self, tenant: Tenant) -> str:
-        if tenant.email_verified:
-            raise ConflictError("This email address is already verified")
-        return await self.issue_verification(tenant)
-
-    async def verify_email(self, token: str) -> Tenant:
-        tenant = await AuthTokenService(self._session).consume(token, AuthTokenPurpose.VERIFY_EMAIL)
-        if tenant.email_verified_at is None:
-            tenant.email_verified_at = utcnow()
-        await self._session.commit()
-        return tenant
-
-    # --- Password reset ---
-
-    async def request_password_reset(self, email: str) -> tuple[Tenant, str] | None:
-        """A reset token for an active account, or None. Callers answer the same either way."""
-        tenant = await self._session.scalar(select(Tenant).where(Tenant.email == email))
-        if tenant is None or not tenant.is_active:
-            return None
-        ttl = timedelta(minutes=settings.PASSWORD_RESET_TTL_MINUTES)
-        token = await AuthTokenService(self._session).issue(
-            tenant, AuthTokenPurpose.RESET_PASSWORD, ttl
-        )
-        return tenant, token
-
-    async def reset_password(self, token: str, password: str) -> Tenant:
-        """Set the password and sign out every dashboard session. Integration keys stay."""
-        tenant = await AuthTokenService(self._session).consume(
-            token, AuthTokenPurpose.RESET_PASSWORD
-        )
-        tenant.password_hash = hash_password(password)
-        # The link reached the inbox, which proves the address as well.
-        if tenant.email_verified_at is None:
-            tenant.email_verified_at = utcnow()
-        await self._session.execute(
-            update(ApiKey)
-            .where(ApiKey.tenant_id == tenant.id, ApiKey.is_session.is_(True))
-            .values(is_active=False)
-        )
-        await self._session.commit()
-        return tenant
+        return Session(tenant=tenant, user=user, key=key, plain_key=generated.plain_key)
 
     async def logout(self, api_key: ApiKey) -> None:
         """Revoke the key if it is a dashboard session; integration keys are left alone."""
         if api_key.is_session and api_key.is_active:
             api_key.is_active = False
             await self._session.commit()
+
+    # --- Email verification ---
+
+    async def issue_verification(self, user: User) -> str:
+        ttl = timedelta(hours=settings.EMAIL_VERIFICATION_TTL_HOURS)
+        return await AuthTokenService(self._session).issue(user, AuthTokenPurpose.VERIFY_EMAIL, ttl)
+
+    async def resend_verification(self, user: User | None) -> tuple[User, str]:
+        if user is None:
+            raise BadRequestError("Sign in to the dashboard to verify your email")
+        if user.email_verified:
+            raise ConflictError("This email address is already verified")
+        return user, await self.issue_verification(user)
+
+    async def verify_email(self, token: str) -> tuple[Tenant, User]:
+        user = await AuthTokenService(self._session).consume(token, AuthTokenPurpose.VERIFY_EMAIL)
+        tenant = await self._mark_verified(user)
+        await self._session.commit()
+        return tenant, user
+
+    async def _mark_verified(self, user: User) -> Tenant:
+        """Verify the user; the owner's address is also the workspace's."""
+        now = utcnow()
+        if user.email_verified_at is None:
+            user.email_verified_at = now
+        tenant = await self._tenants.get_tenant(user.tenant_id)
+        if user.role == Role.OWNER and tenant.email_verified_at is None:
+            tenant.email_verified_at = now
+        return tenant
+
+    # --- Password reset ---
+
+    async def request_password_reset(self, email: str) -> tuple[User, str] | None:
+        """A reset token for an active user, or None. Callers answer the same either way."""
+        user = await self._session.scalar(select(User).where(User.email == email))
+        if user is None or not user.is_active:
+            return None
+        ttl = timedelta(minutes=settings.PASSWORD_RESET_TTL_MINUTES)
+        token = await AuthTokenService(self._session).issue(
+            user, AuthTokenPurpose.RESET_PASSWORD, ttl
+        )
+        return user, token
+
+    async def reset_password(self, token: str, password: str) -> User:
+        """Set the password and sign out the user's dashboard sessions. API keys stay."""
+        user = await AuthTokenService(self._session).consume(token, AuthTokenPurpose.RESET_PASSWORD)
+        user.password_hash = hash_password(password)
+        # The link reached the inbox, which proves the address as well.
+        await self._mark_verified(user)
+        await self._session.execute(
+            update(ApiKey).where(ApiKey.user_id == user.id).values(is_active=False)
+        )
+        await self._session.commit()
+        return user
+
+    # --- Workspace settings ---
 
     async def list_api_keys(self, tenant: Tenant) -> list[ApiKey]:
         return [k for k in await self._tenants.list_api_keys(tenant.id) if not k.is_session]
@@ -151,14 +174,20 @@ class AccountService:
     async def delete_account(
         self,
         tenant: Tenant,
+        user: User | None,
         confirm_email: str,
         password: str | None,
         vector_store: PineconeService,
     ) -> None:
-        """Delete the tenant's vectors, then the tenant (items, keys and logs cascade)."""
+        """Delete the workspace's vectors, then the workspace (users, items, keys and logs
+        cascade). Only the owner, confirming the workspace email and their password."""
         if confirm_email.lower() != tenant.email:
             raise BadRequestError("confirm_email does not match the account email")
-        if tenant.has_password and not verify_password(password or "", tenant.password_hash):
+        if (
+            user is not None
+            and user.has_password
+            and not verify_password(password or "", user.password_hash)
+        ):
             raise UnauthorizedError("Password is incorrect")
         try:
             await vector_store.delete_tenant_vectors(tenant.id)

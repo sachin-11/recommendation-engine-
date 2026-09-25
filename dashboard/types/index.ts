@@ -6,6 +6,7 @@ export type BatchStatus = "PENDING" | "PROCESSING" | "DONE" | "PARTIAL_FAIL";
 export type QueryType = "TEXT" | "ITEM_ID" | "PROFILE";
 export type FeedbackType = "CLICK" | "THUMBS_UP" | "THUMBS_DOWN" | "PURCHASE" | "APPLY" | "IGNORE";
 export type CacheStatus = "HIT" | "MISS" | "BYPASS" | "PARTIAL";
+export type Role = "VIEWER" | "DEVELOPER" | "ADMIN" | "OWNER";
 
 export interface DomainConfig {
   primary_embedding_field: string;
@@ -14,6 +15,18 @@ export interface DomainConfig {
   item_label: string;
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  email_verified: boolean;
+  has_password: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+/** The workspace (`/me`), plus who is asking. */
 export interface Tenant {
   id: string;
   name: string;
@@ -21,11 +34,37 @@ export interface Tenant {
   domain_type: DomainType;
   domain_config: DomainConfig;
   is_active: boolean;
+  /** The caller's role; integration API keys act as DEVELOPER. */
+  role: Role;
+  /** The signed-in person; null when signed in with an integration API key. */
+  user: User | null;
   has_password: boolean;
   /** False until the emailed link is opened; API keys need a verified email. */
   email_verified: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: Role;
+  invited_by_id: string | null;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface Team {
+  members: User[];
+  invitations: Invitation[];
+}
+
+export interface InvitationInfo {
+  workspace_name: string;
+  email: string;
+  role: Role;
+  invited_by: string | null;
+  expires_at: string;
 }
 
 export interface ApiKey {
@@ -37,6 +76,7 @@ export interface ApiKey {
   last_used_at: string | null;
   expires_at: string | null;
   created_at: string;
+  created_by_id: string | null;
 }
 
 export interface ApiKeyCreated extends ApiKey {

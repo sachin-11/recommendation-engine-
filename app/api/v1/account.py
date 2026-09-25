@@ -1,7 +1,7 @@
-"""Dashboard sign-up/sign-in (`/auth`) and self-service for the signed-in tenant (`/me`)."""
+"""Dashboard sign-up/sign-in (`/auth`) and self-service for the signed-in workspace (`/me`)."""
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,8 +11,9 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.email import send_email
 from app.core.exceptions import ForbiddenError, RateLimitError, UnauthorizedError
-from app.middleware.auth import AuthDep
+from app.middleware.auth import AuthDep, require_role
 from app.middleware.rate_limit import RateLimiterDep
+from app.models.user import Role
 from app.schemas.account import (
     DeleteAccountRequest,
     DomainConfigUpdate,
@@ -34,7 +35,7 @@ from app.services.account_emails import (
     password_reset_email,
     verification_email,
 )
-from app.services.account_service import AccountServiceDep
+from app.services.account_service import AccountServiceDep, Session
 from app.services.embedding.dependencies import VectorStoreDep
 from app.services.tenant_service import TenantService
 
@@ -46,12 +47,15 @@ REGISTRATIONS_PER_CLIENT = 5
 RESET_REQUESTS_PER_CLIENT = 5
 RESET_REQUESTS_PER_EMAIL = 2
 LINK_ATTEMPTS_PER_CLIENT = 20
-VERIFICATION_EMAILS_PER_TENANT = 1
+VERIFICATION_EMAILS_PER_USER = 1
 
 FORGOT_PASSWORD_MESSAGE = (
     "If an account exists for that email, a password reset link is on its way. "
     "It expires in {minutes} minutes."
 )
+ROLE_RESPONSE: dict[int | str, dict[str, Any]] = {
+    403: {"model": ErrorResponse, "description": "Your role does not allow this"}
+}
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 me_router = APIRouter(
@@ -59,8 +63,17 @@ me_router = APIRouter(
 )
 
 
-def _client(request: Request) -> str:
+def client_address(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+def login_response(session: Session) -> LoginResponse:
+    assert session.key.expires_at is not None
+    return LoginResponse(
+        tenant=MeResponse.build(session.tenant, session.user, session.user.role),
+        api_key=session.plain_key,
+        expires_at=session.key.expires_at,
+    )
 
 
 def _locked(retry_after: int) -> RateLimitError:
@@ -75,7 +88,7 @@ def _locked(retry_after: int) -> RateLimitError:
 @auth_router.post(
     "/register",
     status_code=status.HTTP_201_CREATED,
-    summary="Create a tenant with a dashboard password and sign it in",
+    summary="Create a workspace and its owner, and sign the owner in",
     responses={
         409: {"model": ErrorResponse, "description": "Email already registered"},
         429: {"model": ErrorResponse, "description": "Too many sign-ups from this address"},
@@ -88,15 +101,17 @@ async def register(
     service: AccountServiceDep,
     limiter: RateLimiterDep,
 ) -> RegisterResponse:
-    await limiter.hit(f"register:client:{_client(request)}", REGISTRATIONS_PER_CLIENT)
-    tenant, session_key, plain_key, token = await service.register(payload)
-    background_tasks.add_task(send_email, verification_email(tenant, token))
-    assert session_key.expires_at is not None
+    await limiter.hit(f"register:client:{client_address(request)}", REGISTRATIONS_PER_CLIENT)
+    session, token = await service.register(payload)
+    background_tasks.add_task(send_email, verification_email(session.user, token))
+    assert session.key.expires_at is not None
     return RegisterResponse(
-        tenant=MeResponse.model_validate(tenant),
-        api_key=plain_key,
-        expires_at=session_key.expires_at,
-        verification_required=settings.REQUIRE_EMAIL_VERIFICATION and not tenant.email_verified,
+        tenant=MeResponse.build(session.tenant, session.user, session.user.role),
+        api_key=session.plain_key,
+        expires_at=session.key.expires_at,
+        verification_required=(
+            settings.REQUIRE_EMAIL_VERIFICATION and not session.user.email_verified
+        ),
     )
 
 
@@ -111,25 +126,20 @@ async def register(
 async def login(
     payload: LoginRequest, request: Request, service: AccountServiceDep, limiter: RateLimiterDep
 ) -> LoginResponse:
-    await limiter.hit(f"login:client:{_client(request)}", LOGIN_ATTEMPTS_PER_CLIENT)
+    await limiter.hit(f"login:client:{client_address(request)}", LOGIN_ATTEMPTS_PER_CLIENT)
     await limiter.hit(f"login:email:{payload.email}", LOGIN_ATTEMPTS_PER_EMAIL)
     lock = f"login:{payload.email}"
     if await limiter.failures(lock) >= settings.LOGIN_MAX_FAILURES:
         raise _locked(await limiter.retry_after(lock))
     try:
-        tenant, session_key, plain_key = await service.login(payload.email, payload.password)
+        session = await service.login(payload.email, payload.password)
     except UnauthorizedError:
         failures = await limiter.record_failure(lock, settings.LOGIN_LOCKOUT_MINUTES * 60)
         if failures >= settings.LOGIN_MAX_FAILURES:
             raise _locked(await limiter.retry_after(lock)) from None
         raise
     await limiter.clear_failures(lock)
-    assert session_key.expires_at is not None
-    return LoginResponse(
-        tenant=MeResponse.model_validate(tenant),
-        api_key=plain_key,
-        expires_at=session_key.expires_at,
-    )
+    return login_response(session)
 
 
 @auth_router.post(
@@ -145,7 +155,7 @@ async def logout(auth: AuthDep, service: AccountServiceDep) -> None:
 
 @auth_router.post(
     "/verify-email",
-    summary="Confirm the account email with the token from the verification link",
+    summary="Confirm a user's email with the token from the verification link",
     responses={400: {"model": ErrorResponse, "description": "Invalid, used or expired link"}},
 )
 async def verify_email(
@@ -154,14 +164,15 @@ async def verify_email(
     service: AccountServiceDep,
     limiter: RateLimiterDep,
 ) -> MeResponse:
-    await limiter.hit(f"link:client:{_client(request)}", LINK_ATTEMPTS_PER_CLIENT)
-    return MeResponse.model_validate(await service.verify_email(payload.token))
+    await limiter.hit(f"link:client:{client_address(request)}", LINK_ATTEMPTS_PER_CLIENT)
+    tenant, user = await service.verify_email(payload.token)
+    return MeResponse.build(tenant, user, user.role)
 
 
 @auth_router.post(
     "/resend-verification",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Email a new verification link to the signed-in tenant",
+    summary="Email a new verification link to the signed-in user",
     dependencies=PROTECTED,
     responses={
         **AUTH_RESPONSES,
@@ -174,10 +185,11 @@ async def resend_verification(
     service: AccountServiceDep,
     limiter: RateLimiterDep,
 ) -> MessageResponse:
-    await limiter.hit(f"verify-email:{auth.tenant.id}", VERIFICATION_EMAILS_PER_TENANT)
-    token = await service.resend_verification(auth.tenant)
-    background_tasks.add_task(send_email, verification_email(auth.tenant, token))
-    return MessageResponse(message=f"Verification link sent to {auth.tenant.email}.")
+    if auth.user is not None:
+        await limiter.hit(f"verify-email:{auth.user.id}", VERIFICATION_EMAILS_PER_USER)
+    user, token = await service.resend_verification(auth.user)
+    background_tasks.add_task(send_email, verification_email(user, token))
+    return MessageResponse(message=f"Verification link sent to {user.email}.")
 
 
 @auth_router.post(
@@ -193,12 +205,12 @@ async def forgot_password(
     service: AccountServiceDep,
     limiter: RateLimiterDep,
 ) -> MessageResponse:
-    await limiter.hit(f"reset:client:{_client(request)}", RESET_REQUESTS_PER_CLIENT)
+    await limiter.hit(f"reset:client:{client_address(request)}", RESET_REQUESTS_PER_CLIENT)
     await limiter.hit(f"reset:email:{payload.email}", RESET_REQUESTS_PER_EMAIL)
     issued = await service.request_password_reset(payload.email)
     if issued is not None:
-        tenant, token = issued
-        background_tasks.add_task(send_email, password_reset_email(tenant, token))
+        user, token = issued
+        background_tasks.add_task(send_email, password_reset_email(user, token))
     return MessageResponse(
         message=FORGOT_PASSWORD_MESSAGE.format(minutes=settings.PASSWORD_RESET_TTL_MINUTES)
     )
@@ -216,39 +228,42 @@ async def reset_password(
     service: AccountServiceDep,
     limiter: RateLimiterDep,
 ) -> MessageResponse:
-    await limiter.hit(f"link:client:{_client(request)}", LINK_ATTEMPTS_PER_CLIENT)
-    tenant = await service.reset_password(payload.token, payload.password)
-    await limiter.clear_failures(f"login:{tenant.email}")
-    background_tasks.add_task(send_email, password_changed_email(tenant))
+    await limiter.hit(f"link:client:{client_address(request)}", LINK_ATTEMPTS_PER_CLIENT)
+    user = await service.reset_password(payload.token, payload.password)
+    await limiter.clear_failures(f"login:{user.email}")
+    background_tasks.add_task(send_email, password_changed_email(user))
     return MessageResponse(message="Password updated. Sign in with your new password.")
 
 
-# --- Signed-in tenant ---
+# --- Signed-in workspace ---
 
 
-@me_router.get("", summary="The signed-in tenant")
+@me_router.get("", summary="The workspace, and the caller's user and role")
 async def get_me(auth: AuthDep) -> MeResponse:
-    return MeResponse.model_validate(auth.tenant)
+    return MeResponse.build(auth.tenant, auth.user, auth.role)
 
 
 @me_router.put(
     "/domain-config",
-    summary="Replace the domain config",
-    responses={422: {"model": ErrorResponse, "description": "Invalid config"}},
+    summary="Replace the domain config (Admin)",
+    dependencies=[require_role(Role.ADMIN)],
+    responses={422: {"model": ErrorResponse, "description": "Invalid config"}, **ROLE_RESPONSE},
 )
 async def update_domain_config(
     payload: DomainConfigUpdate, auth: AuthDep, service: AccountServiceDep
 ) -> DomainConfigUpdateResponse:
     rebuild = await service.update_domain_config(auth.tenant, payload.domain_config)
     return DomainConfigUpdateResponse(
-        tenant=MeResponse.model_validate(auth.tenant), rebuild_recommended=rebuild
+        tenant=MeResponse.build(auth.tenant, auth.user, auth.role), rebuild_recommended=rebuild
     )
 
 
 @me_router.post(
     "/delete",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Permanently delete this tenant, its items, keys, logs and vector index",
+    summary="Permanently delete this workspace, its users, items, keys, logs and vectors (Owner)",
+    dependencies=[require_role(Role.OWNER)],
+    responses=ROLE_RESPONSE,
 )
 async def delete_account(
     payload: DeleteAccountRequest,
@@ -256,10 +271,17 @@ async def delete_account(
     service: AccountServiceDep,
     vector_store: VectorStoreDep,
 ) -> None:
-    await service.delete_account(auth.tenant, payload.confirm_email, payload.password, vector_store)
+    await service.delete_account(
+        auth.tenant, auth.user, payload.confirm_email, payload.password, vector_store
+    )
 
 
-@me_router.get("/api-keys", summary="API keys (dashboard session keys are not listed)")
+@me_router.get(
+    "/api-keys",
+    summary="API keys (Developer; dashboard session keys are not listed)",
+    dependencies=[require_role(Role.DEVELOPER)],
+    responses=ROLE_RESPONSE,
+)
 async def list_api_keys(auth: AuthDep, service: AccountServiceDep) -> list[ApiKeyResponse]:
     return [ApiKeyResponse.model_validate(k) for k in await service.list_api_keys(auth.tenant)]
 
@@ -267,25 +289,32 @@ async def list_api_keys(auth: AuthDep, service: AccountServiceDep) -> list[ApiKe
 @me_router.post(
     "/api-keys",
     status_code=status.HTTP_201_CREATED,
-    summary="Create an API key (the plain key is returned only once)",
-    responses={403: {"model": ErrorResponse, "description": "Email not verified yet"}},
+    summary="Create an API key (Developer; the plain key is returned only once)",
+    dependencies=[require_role(Role.DEVELOPER)],
+    responses={403: {"model": ErrorResponse, "description": "Email not verified, or role"}},
 )
 async def create_api_key(
     payload: ApiKeyCreate, auth: AuthDep, session: Annotated[AsyncSession, Depends(get_db)]
 ) -> ApiKeyCreatedResponse:
-    if settings.REQUIRE_EMAIL_VERIFICATION and not auth.tenant.email_verified:
+    if settings.REQUIRE_EMAIL_VERIFICATION and not auth.email_verified:
         raise ForbiddenError(
             "Verify your email address before creating API keys. Open the link we emailed "
             "you, or request a new one with POST /auth/resend-verification."
         )
-    api_key, plain_key = await TenantService(session).create_api_key(auth.tenant.id, payload)
+    api_key, plain_key = await TenantService(session).create_api_key(
+        auth.tenant.id, payload, created_by=auth.user
+    )
     return ApiKeyCreatedResponse.model_validate(
         {**ApiKeyResponse.model_validate(api_key).model_dump(), "api_key": plain_key}
     )
 
 
 @me_router.delete(
-    "/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Revoke an API key"
+    "/api-keys/{key_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke an API key (Developer)",
+    dependencies=[require_role(Role.DEVELOPER)],
+    responses=ROLE_RESPONSE,
 )
 async def revoke_api_key(
     key_id: uuid.UUID, auth: AuthDep, session: Annotated[AsyncSession, Depends(get_db)]

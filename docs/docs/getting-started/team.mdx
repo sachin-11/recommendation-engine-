@@ -1,0 +1,44 @@
+---
+sidebar_position: 4
+title: Team and roles
+description: Invite teammates and control what each of them can do.
+---
+
+# Team and roles
+
+A workspace has one **Owner** (the person who signed up) and any number of members. Everyone signs in with their own email and password; each has a role.
+
+| Role | Can |
+| --- | --- |
+| **Viewer** | Browse items and analytics, run recommendations in the playground, send feedback |
+| **Developer** | Everything a Viewer can, plus upload and delete items, rebuild the index, create and revoke API keys |
+| **Admin** | Everything a Developer can, plus change the domain config and manage the team |
+| **Owner** | Everything, plus transfer ownership and delete the workspace |
+
+**Integration API keys act as Developers.** They can upload, delete and recommend, but cannot change the domain config, manage members or delete the workspace. A request without the needed role gets `403` with a message naming the role it needs.
+
+## Inviting someone
+
+In the dashboard, open **Team → Invite member**, enter their email and pick a role. They get an email; the link is valid for 7 days and works once. Accepting it sets their name and password and signs them in; their email counts as verified.
+
+Over the API (Admin or Owner session):
+
+```bash
+curl -X POST $RECO_API/api/v1/me/members/invitations \
+  -H "X-API-Key: $SESSION_KEY" -H "Content-Type: application/json" \
+  -d '{"email": "dev@acme.com", "role": "DEVELOPER"}'
+```
+
+- Inviting the same address again replaces the earlier link.
+- A person belongs to one workspace: an email that already has an account cannot be invited (`409`).
+- `GET /me/members` lists members and pending invitations; `DELETE /me/members/invitations/{id}` revokes one.
+
+## Changing roles and removing members
+
+Admins change roles with `PATCH /me/members/{user_id}` and remove members with `DELETE /me/members/{user_id}`. Nobody can change their own role, and the Owner can be neither demoted nor removed.
+
+Removing a member signs them out immediately. **API keys they created keep working**, so integrations don't break when someone leaves; revoke those keys on the API keys page if you need to.
+
+## Transferring ownership
+
+The Owner can make any verified member the new Owner (**Team → Make owner**, or `POST /me/members/transfer-ownership` with your password). The previous Owner becomes an Admin, and the workspace's account email becomes the new Owner's.

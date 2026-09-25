@@ -41,7 +41,9 @@ An API key can upload and delete items. Call RecoEngine from your backend, not f
 
 ## Dashboard sessions
 
-Signing in to the dashboard with email and password (`POST /auth/login`) returns a 7-day **session key**. It works like an API key, is hidden from the key list, and is revoked when you sign out (`POST /auth/logout`). Login is limited to 10 attempts per minute per email.
+Each person signs in with their own email and password (`POST /auth/login`) and gets a 7-day **session key**. It works like an API key but carries that person's role (see [Team and roles](./team)), is hidden from the key list, and is revoked when they sign out (`POST /auth/logout`) or are removed from the team. Login is limited to 10 attempts per minute per email, and 5 wrong passwords lock the email for 15 minutes.
+
+Integration API keys (the ones you create on the API keys page) act with the **Developer** role.
 
 ## Errors
 

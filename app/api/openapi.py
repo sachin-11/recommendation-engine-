@@ -28,7 +28,14 @@ UTC day.
 
 TAGS: list[dict[str, str]] = [
     {"name": "Auth", "description": "Sign up and dashboard sessions."},
-    {"name": "Account", "description": "The signed-in tenant: API keys, domain config, deletion."},
+    {
+        "name": "Account",
+        "description": "The signed-in workspace: API keys, domain config, deletion.",
+    },
+    {
+        "name": "Team",
+        "description": "Members, roles (OWNER, ADMIN, DEVELOPER, VIEWER) and invitations.",
+    },
     {"name": "Items", "description": "Upload, list and delete the items you want to recommend."},
     {"name": "Recommendations", "description": "Similar items by text, item or profile; feedback."},
     {"name": "Analytics", "description": "Query volume, latency, cache hit rate, feedback."},
@@ -45,6 +52,7 @@ TAGS: list[dict[str, str]] = [
 _TAG_NAMES = {
     "auth": "Auth",
     "account": "Account",
+    "team": "Team",
     "items": "Items",
     "recommend": "Recommendations",
     "analytics": "Analytics",
@@ -58,8 +66,8 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
     ("get", "/health"): ("getHealth", "Returns 200 when the database and Redis respond, else 503."),
     ("post", "/api/v1/auth/register"): (
         "register",
-        "Create a tenant with a dashboard password and sign it in: the response carries a "
-        "7-day session key. A verification link is emailed; until it is opened the account "
+        "Create a workspace and its OWNER user and sign the owner in: the response carries "
+        "a 7-day session key. A verification link is emailed; until it is opened the account "
         "cannot create API keys and can ingest at most 100 items a day.",
     ),
     ("post", "/api/v1/auth/login"): (
@@ -92,7 +100,49 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "Set a new password with the token from the reset link (single use, 60 minutes). "
         "Signs out every dashboard session; integration API keys keep working.",
     ),
-    ("get", "/api/v1/me"): ("getMe", "The tenant that owns the API key."),
+    ("get", "/api/v1/me"): (
+        "getMe",
+        "The workspace that owns the key, with the caller's `role` and `user` (null for an "
+        "integration key, which acts as DEVELOPER).",
+    ),
+    ("get", "/api/v1/me/members"): (
+        "listMembers",
+        "Members of the workspace, highest role first, and pending invitations.",
+    ),
+    ("post", "/api/v1/me/members/invitations"): (
+        "inviteMember",
+        "Admin: email an invitation to join as ADMIN, DEVELOPER or VIEWER (default "
+        "DEVELOPER). Re-inviting an address replaces its earlier invitation. Links expire "
+        "after 7 days. 409 if the email already has an account.",
+    ),
+    ("delete", "/api/v1/me/members/invitations/{invitation_id}"): (
+        "revokeInvitation",
+        "Admin: revoke a pending invitation; its link stops working.",
+    ),
+    ("patch", "/api/v1/me/members/{user_id}"): (
+        "changeMemberRole",
+        "Admin: change a member's role. The owner's role and your own cannot be changed here.",
+    ),
+    ("delete", "/api/v1/me/members/{user_id}"): (
+        "removeMember",
+        "Admin: remove a member. Their dashboard sessions end; API keys they created keep "
+        "working. The owner cannot be removed.",
+    ),
+    ("post", "/api/v1/me/members/transfer-ownership"): (
+        "transferOwnership",
+        "Owner: make a verified member the owner (you become ADMIN). The workspace email "
+        "follows the new owner. Requires your password.",
+    ),
+    ("post", "/api/v1/auth/invitations/lookup"): (
+        "lookupInvitation",
+        "Public: the workspace, email, role and inviter behind an invitation token, to show "
+        "before accepting.",
+    ),
+    ("post", "/api/v1/auth/invitations/accept"): (
+        "acceptInvitation",
+        "Public: accept an invitation with your name and a password. Creates your user with "
+        "a verified email and returns a session like /auth/login.",
+    ),
     ("put", "/api/v1/me/domain-config"): (
         "updateDomainConfig",
         "Replace the domain config. `rebuild_recommended` is true when embedded fields or "
@@ -109,8 +159,8 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
     ),
     ("post", "/api/v1/me/api-keys"): (
         "createApiKey",
-        "Create an API key. The plain key is in the response once; store it securely. "
-        "Returns 403 until the account email is verified.",
+        "Developer: create an API key. The plain key is in the response once; store it "
+        "securely. Returns 403 until your email is verified.",
     ),
     ("delete", "/api/v1/me/api-keys/{key_id}"): (
         "revokeApiKey",

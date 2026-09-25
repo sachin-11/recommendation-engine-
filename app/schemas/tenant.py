@@ -174,6 +174,9 @@ class ApiKeyResponse(BaseModel):
     last_used_at: datetime | None
     expires_at: datetime | None
     created_at: datetime
+    created_by_id: uuid.UUID | None = Field(
+        default=None, description="The user who created the key, if they still exist."
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property

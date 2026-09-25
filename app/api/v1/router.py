@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.v1 import account, analytics, recommend
+from app.api.v1 import account, analytics, recommend, team
 from app.api.v1.items import index_router, items_router
 from app.middleware.admin import require_admin
 from app.schemas.common import ERROR_RESPONSES, ErrorResponse
@@ -40,7 +40,7 @@ tenants_router = APIRouter(
 )
 async def create_tenant(payload: TenantCreate, service: TenantServiceDep) -> TenantResponse:
     # Created by the operator, who vouches for the address.
-    tenant = await service.create_tenant(payload, verified=True)
+    tenant, _ = await service.create_tenant(payload, verified=True)
     return TenantResponse.model_validate(tenant)
 
 
@@ -89,3 +89,5 @@ api_router.include_router(recommend.router)
 api_router.include_router(analytics.router)
 api_router.include_router(account.auth_router)
 api_router.include_router(account.me_router)
+api_router.include_router(team.members_router)
+api_router.include_router(team.invitations_router)

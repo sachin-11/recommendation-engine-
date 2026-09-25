@@ -14,7 +14,9 @@ import { JsonView } from "@/components/ui/json-view";
 import { CopyButton, EmptyState } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toastApiError } from "@/lib/api";
+import { useMe } from "@/lib/hooks/account";
 import { useDeleteItems, useItem } from "@/lib/hooks/items";
+import { can } from "@/lib/roles";
 import { formatDate } from "@/lib/utils";
 
 function safeDecode(value: string): string {
@@ -30,6 +32,7 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { data: item, isLoading, isError } = useItem(externalId);
   const remove = useDeleteItems();
+  const { data: me } = useMe();
   const [confirm, setConfirm] = React.useState(false);
 
   const back = (
@@ -91,9 +94,11 @@ export default function ItemDetailPage({ params }: { params: { id: string } }) {
               </Link>
             </Button>
           )}
-          <Button variant="destructive" onClick={() => setConfirm(true)}>
-            <Trash2 /> Delete
-          </Button>
+          {can(me, "DEVELOPER") && (
+            <Button variant="destructive" onClick={() => setConfirm(true)}>
+              <Trash2 /> Delete
+            </Button>
+          )}
         </div>
       </div>
 

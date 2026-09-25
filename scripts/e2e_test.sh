@@ -55,6 +55,8 @@ json() {
 
 cleanup() {
   [ -z "$API_KEY" ] && return
+  # Deleting the workspace needs the owner, i.e. the session from sign-up.
+  [ -n "${REGISTER_KEY:-}" ] && API_KEY="$REGISTER_KEY"
   request POST /me/delete "{\"confirm_email\": \"$EMAIL\", \"password\": \"$PASSWORD\"}"
   if [ "$STATUS" = "204" ]; then echo "cleanup: test tenant and its vectors deleted"; else echo "cleanup: delete returned $STATUS"; fi
   API_KEY=""

@@ -26,6 +26,8 @@ const AUTH_PATHS = [
   "/auth/verify-email",
   "/auth/forgot-password",
   "/auth/reset-password",
+  "/auth/invitations/lookup",
+  "/auth/invitations/accept",
 ];
 
 api.interceptors.response.use(

@@ -2540,7 +2540,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Create a tenant with a dashboard password and sign it in",
+        "summary": "Create a workspace and its owner, and sign the owner in",
         "operationId": "register",
         "requestBody": {
           "content": {
@@ -2594,7 +2594,7 @@
             }
           }
         },
-        "description": "Create a tenant with a dashboard password and sign it in: the response carries a 7-day session key. A verification link is emailed; until it is opened the account cannot create API keys and can ingest at most 100 items a day."
+        "description": "Create a workspace and its OWNER user and sign the owner in: the response carries a 7-day session key. A verification link is emailed; until it is opened the account cannot create API keys and can ingest at most 100 items a day."
       }
     },
     "/api/v1/auth/login": {
@@ -2734,7 +2734,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Confirm the account email with the token from the verification link",
+        "summary": "Confirm a user's email with the token from the verification link",
         "operationId": "verifyEmail",
         "requestBody": {
           "content": {
@@ -2786,7 +2786,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Email a new verification link to the signed-in tenant",
+        "summary": "Email a new verification link to the signed-in user",
         "operationId": "resendVerification",
         "responses": {
           "202": {
@@ -2977,7 +2977,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "The signed-in tenant",
+        "summary": "The workspace, and the caller's user and role",
         "operationId": "getMe",
         "responses": {
           "200": {
@@ -3046,7 +3046,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "description": "The tenant that owns the API key."
+        "description": "The workspace that owns the key, with the caller's `role` and `user` (null for an integration key, which acts as DEVELOPER)."
       }
     },
     "/api/v1/me/domain-config": {
@@ -3054,7 +3054,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Replace the domain config",
+        "summary": "Replace the domain config (Admin)",
         "operationId": "updateDomainConfig",
         "requestBody": {
           "content": {
@@ -3126,6 +3126,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3141,7 +3151,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Permanently delete this tenant, its items, keys, logs and vector index",
+        "summary": "Permanently delete this workspace, its users, items, keys, logs and vectors (Owner)",
         "operationId": "deleteAccount",
         "requestBody": {
           "content": {
@@ -3206,6 +3216,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3221,7 +3241,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "API keys (dashboard session keys are not listed)",
+        "summary": "API keys (Developer; dashboard session keys are not listed)",
         "operationId": "listApiKeys",
         "responses": {
           "200": {
@@ -3287,6 +3307,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3300,7 +3330,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Create an API key (the plain key is returned only once)",
+        "summary": "Create an API key (Developer; the plain key is returned only once)",
         "operationId": "createApiKey",
         "requestBody": {
           "content": {
@@ -3374,7 +3404,7 @@
             }
           },
           "403": {
-            "description": "Email not verified yet",
+            "description": "Email not verified, or role",
             "content": {
               "application/json": {
                 "schema": {
@@ -3389,7 +3419,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "description": "Create an API key. The plain key is in the response once; store it securely. Returns 403 until the account email is verified."
+        "description": "Developer: create an API key. The plain key is in the response once; store it securely. Returns 403 until your email is verified."
       }
     },
     "/api/v1/me/api-keys/{key_id}": {
@@ -3397,7 +3427,7 @@
         "tags": [
           "Account"
         ],
-        "summary": "Revoke an API key",
+        "summary": "Revoke an API key (Developer)",
         "operationId": "revokeApiKey",
         "security": [
           {
@@ -3469,14 +3499,740 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "description": "Revoke a key. Requests with it get 401 immediately."
+      }
+    },
+    "/api/v1/me/members": {
+      "get": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Members and pending invitations",
+        "operationId": "listMembers",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Members of the workspace, highest role first, and pending invitations."
+      }
+    },
+    "/api/v1/me/members/invitations": {
+      "post": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Invite someone by email (Admin)",
+        "operationId": "inviteMember",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already has an account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Admin: email an invitation to join as ADMIN, DEVELOPER or VIEWER (default DEVELOPER). Re-inviting an address replaces its earlier invitation. Links expire after 7 days. 409 if the email already has an account."
+      }
+    },
+    "/api/v1/me/members/invitations/{invitation_id}": {
+      "delete": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Revoke a pending invitation (Admin)",
+        "operationId": "revokeInvitation",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Invitation Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Admin: revoke a pending invitation; its link stops working."
+      }
+    },
+    "/api/v1/me/members/{user_id}": {
+      "patch": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Change a member's role (Admin)",
+        "operationId": "changeMemberRole",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Admin: change a member's role. The owner's role and your own cannot be changed here."
+      },
+      "delete": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Remove a member (Admin); their dashboard sessions end, API keys stay",
+        "operationId": "removeMember",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Admin: remove a member. Their dashboard sessions end; API keys they created keep working. The owner cannot be removed."
+      }
+    },
+    "/api/v1/me/members/transfer-ownership": {
+      "post": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Make another member the owner (Owner); you become an Admin",
+        "operationId": "transferOwnership",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferOwnershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Your role does not allow this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Owner: make a verified member the owner (you become ADMIN). The workspace email follows the new owner. Requires your password."
+      }
+    },
+    "/api/v1/auth/invitations/lookup": {
+      "post": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Who invited whom, to which workspace, from an invitation token",
+        "operationId": "lookupInvitation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, revoked or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Public: the workspace, email, role and inviter behind an invitation token, to show before accepting."
+      }
+    },
+    "/api/v1/auth/invitations/accept": {
+      "post": {
+        "tags": [
+          "Team"
+        ],
+        "summary": "Accept an invitation: create your user and sign in",
+        "operationId": "acceptInvitation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, revoked or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The email already has an account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Public: accept an invitation with your name and a password. Creates your user with a verified email and returns a session like /auth/login."
       }
     }
   },
   "components": {
     "schemas": {
+      "AcceptInvitationRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Token"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token",
+          "name",
+          "password"
+        ],
+        "title": "AcceptInvitationRequest"
+      },
       "AnalyticsOverview": {
         "properties": {
           "total_items": {
@@ -3644,6 +4400,19 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id",
+            "description": "The user who created the key, if they still exist."
+          },
           "api_key": {
             "type": "string",
             "title": "Api Key",
@@ -3721,6 +4490,19 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "created_by_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Id",
+            "description": "The user who created the key, if they still exist."
           },
           "display_key": {
             "type": "string",
@@ -4651,6 +5433,129 @@
         ],
         "title": "IndexStatsResponse"
       },
+      "InvitationInfo": {
+        "properties": {
+          "workspace_name": {
+            "type": "string",
+            "title": "Workspace Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "invited_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invited By"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_name",
+          "email",
+          "role",
+          "invited_by",
+          "expires_at"
+        ],
+        "title": "InvitationInfo"
+      },
+      "InvitationResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "invited_by_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invited By Id"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "role",
+          "invited_by_id",
+          "expires_at",
+          "created_at"
+        ],
+        "title": "InvitationResponse"
+      },
+      "InvitationTokenRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Token"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "InvitationTokenRequest"
+      },
+      "InviteRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "default": "DEVELOPER"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "InviteRequest"
+      },
       "ItemCount": {
         "properties": {
           "external_id": {
@@ -4978,13 +5883,29 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "description": "The caller's role. Integration API keys act as DEVELOPER."
+          },
+          "user": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UserResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when calling with an integration key."
+          },
           "has_password": {
             "type": "boolean",
             "title": "Has Password"
           },
           "email_verified": {
             "type": "boolean",
-            "title": "Email Verified"
+            "title": "Email Verified",
+            "description": "The signed-in user's email (the owner's, for an integration key)."
           }
         },
         "type": "object",
@@ -4997,10 +5918,13 @@
           "is_active",
           "created_at",
           "updated_at",
+          "role",
+          "user",
           "has_password",
           "email_verified"
         ],
-        "title": "MeResponse"
+        "title": "MeResponse",
+        "description": "The workspace, plus who is asking: a signed-in user, or an integration key."
       },
       "MessageResponse": {
         "properties": {
@@ -5192,6 +6116,20 @@
             "maxLength": 128,
             "minLength": 8,
             "title": "Password"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name",
+            "description": "Your name; defaults to the business name."
           }
         },
         "additionalProperties": false,
@@ -5258,6 +6196,30 @@
         ],
         "title": "ResetPasswordRequest"
       },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "VIEWER",
+          "DEVELOPER",
+          "ADMIN",
+          "OWNER"
+        ],
+        "title": "Role",
+        "description": "Workspace roles, from least to most privileged."
+      },
+      "RoleUpdate": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "RoleUpdate"
+      },
       "SyncUploadResponse": {
         "properties": {
           "mode": {
@@ -5294,6 +6256,31 @@
           "results"
         ],
         "title": "SyncUploadResponse"
+      },
+      "TeamResponse": {
+        "properties": {
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/UserResponse"
+            },
+            "type": "array",
+            "title": "Members"
+          },
+          "invitations": {
+            "items": {
+              "$ref": "#/components/schemas/InvitationResponse"
+            },
+            "type": "array",
+            "title": "Invitations",
+            "description": "Pending invitations."
+          }
+        },
+        "type": "object",
+        "required": [
+          "members",
+          "invitations"
+        ],
+        "title": "TeamResponse"
       },
       "TenantCreate": {
         "properties": {
@@ -5502,6 +6489,33 @@
         ],
         "title": "TokenUsageResponse"
       },
+      "TransferOwnershipRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "User Id"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password",
+            "description": "Your password, if you have one."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "title": "TransferOwnershipRequest"
+      },
       "UsageResponse": {
         "properties": {
           "days": {
@@ -5570,6 +6584,63 @@
           "QUERY"
         ],
         "title": "UsageSource"
+      },
+      "UserResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "email_verified": {
+            "type": "boolean",
+            "title": "Email Verified"
+          },
+          "has_password": {
+            "type": "boolean",
+            "title": "Has Password"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role",
+          "email_verified",
+          "has_password",
+          "last_login_at",
+          "created_at"
+        ],
+        "title": "UserResponse"
       },
       "ValidationError": {
         "properties": {
@@ -5651,7 +6722,11 @@
     },
     {
       "name": "Account",
-      "description": "The signed-in tenant: API keys, domain config, deletion."
+      "description": "The signed-in workspace: API keys, domain config, deletion."
+    },
+    {
+      "name": "Team",
+      "description": "Members, roles (OWNER, ADMIN, DEVELOPER, VIEWER) and invitations."
     },
     {
       "name": "Items",

@@ -34,6 +34,7 @@ os.environ["SMTP_SECURITY"] = "starttls"
 import fakeredis
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -62,6 +63,12 @@ async def db_engine() -> AsyncIterator[AsyncEngine]:
         engine = create_async_engine(
             TEST_DATABASE_URL, poolclass=StaticPool, connect_args={"check_same_thread": False}
         )
+
+        # Enforce ON DELETE CASCADE / SET NULL like Postgres does.
+        @event.listens_for(engine.sync_engine, "connect")
+        def _foreign_keys(dbapi_connection: Any, _: Any) -> None:
+            dbapi_connection.execute("PRAGMA foreign_keys=ON")
+
     else:
         engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     async with engine.begin() as connection:

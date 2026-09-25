@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Settings,
   Sparkles,
+  Users,
 } from "lucide-react";
 
 import { Logo } from "@/components/layout/Logo";
@@ -21,6 +22,7 @@ export const NAV = [
   { href: "/dashboard/recommend", label: "Playground", icon: Sparkles },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/api-keys", label: "API Keys", icon: KeyRound },
+  { href: "/dashboard/team", label: "Team", icon: Users },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

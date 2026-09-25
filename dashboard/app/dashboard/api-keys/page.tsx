@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toastApiError } from "@/lib/api";
 import { useApiKeys, useCreateApiKey, useMe, useRevokeApiKey } from "@/lib/hooks/account";
+import { can, needsRole } from "@/lib/roles";
 import { formatDate, formatRelative } from "@/lib/utils";
 import type { ApiKey, ApiKeyCreated } from "@/types";
 
@@ -114,18 +115,19 @@ function CreateKeyDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 }
 
 export default function ApiKeysPage() {
-  const { data: keys, isLoading } = useApiKeys();
+  const { data: me } = useMe();
+  const allowed = can(me, "DEVELOPER");
+  const { data: keys, isLoading } = useApiKeys(allowed);
   const revoke = useRevokeApiKey();
   const [creating, setCreating] = React.useState(false);
   const [revoking, setRevoking] = React.useState<ApiKey | null>(null);
-  const { data: me } = useMe();
   const unverified = me !== undefined && !me.email_verified;
 
   const create = (
     <Button
       onClick={() => setCreating(true)}
-      disabled={unverified}
-      title={unverified ? "Verify your email to create API keys" : undefined}
+      disabled={unverified || !allowed}
+      title={!allowed ? needsRole("DEVELOPER") : unverified ? "Verify your email to create API keys" : undefined}
     >
       <Plus /> Create new key
     </Button>
@@ -139,7 +141,15 @@ export default function ApiKeysPage() {
         actions={create}
       />
       <Card>
-        {isLoading ? (
+        {me && !allowed ? (
+          <div className="p-4">
+            <EmptyState
+              icon={KeyRound}
+              title="API keys are for Developers"
+              description="Your role can browse and try recommendations. Ask an Admin for the Developer role to manage keys."
+            />
+          </div>
+        ) : isLoading ? (
           <div className="space-y-3 p-5">
             {Array.from({ length: 3 }, (_, i) => (
               <Skeleton key={i} className="h-10 w-full" />

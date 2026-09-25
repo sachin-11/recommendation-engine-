@@ -59,6 +59,7 @@ export function useApiKeyLogin() {
 
 export interface RegisterValues {
   name: string;
+  owner_name?: string;
   email: string;
   password: string;
   domain_type: DomainType;
@@ -129,10 +130,11 @@ export function useLogout() {
   });
 }
 
-export function useApiKeys() {
+export function useApiKeys(enabled = true) {
   return useQuery({
     queryKey: keys.apiKeys,
     queryFn: async () => (await api.get<ApiKey[]>("/me/api-keys")).data,
+    enabled,
   });
 }
 

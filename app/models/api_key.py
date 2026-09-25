@@ -31,6 +31,14 @@ class ApiKey(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     is_session: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()
     )
+    # The signed-in user, for session keys; their sessions go when the user is removed.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    # Who created an integration key; the key outlives the user.
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     tenant: Mapped["Tenant"] = relationship(back_populates="api_keys", lazy="raise")
 
