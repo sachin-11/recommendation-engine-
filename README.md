@@ -34,12 +34,14 @@ Needs Docker, Node 20+, and OpenAI and Pinecone API keys.
 ```bash
 git clone https://github.com/sachin-11/recommendation-engine-.git && cd recommendation-engine-
 cp .env.example .env                       # set SECRET_KEY, OPENAI_API_KEY, PINECONE_API_KEY
-docker compose up -d --build               # API :8000, Postgres, Redis, worker (runs migrations)
+docker compose up -d --build               # API :8000, Postgres, Redis, worker, Mailpit :8025
 cd dashboard && cp .env.example .env.local && npm install && npm run dev   # dashboard :3000
 ./scripts/e2e_test.sh                      # from the repo root: register → upload → recommend → PASS/FAIL
 ```
 
 Open http://localhost:3000 and register, or browse the API at http://localhost:8000/docs.
+Account emails (verify email, password reset) are caught by Mailpit: open http://localhost:8025
+to click the verification link.
 
 ## SDK usage
 

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, KeyRound, Loader2, Plus } from "lucide-react";
+import { AlertTriangle, KeyRound, Loader2, MailWarning, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,7 @@ import { CopyButton, EmptyState, PageHeader } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toastApiError } from "@/lib/api";
-import { useApiKeys, useCreateApiKey, useRevokeApiKey } from "@/lib/hooks/account";
+import { useApiKeys, useCreateApiKey, useMe, useRevokeApiKey } from "@/lib/hooks/account";
 import { formatDate, formatRelative } from "@/lib/utils";
 import type { ApiKey, ApiKeyCreated } from "@/types";
 
@@ -118,9 +118,15 @@ export default function ApiKeysPage() {
   const revoke = useRevokeApiKey();
   const [creating, setCreating] = React.useState(false);
   const [revoking, setRevoking] = React.useState<ApiKey | null>(null);
+  const { data: me } = useMe();
+  const unverified = me !== undefined && !me.email_verified;
 
   const create = (
-    <Button onClick={() => setCreating(true)}>
+    <Button
+      onClick={() => setCreating(true)}
+      disabled={unverified}
+      title={unverified ? "Verify your email to create API keys" : undefined}
+    >
       <Plus /> Create new key
     </Button>
   );
@@ -181,7 +187,15 @@ export default function ApiKeysPage() {
           </Table>
         ) : (
           <div className="p-4">
-            <EmptyState icon={KeyRound} title="No API keys" description="Create a key to call the API from your application." action={create} />
+            {unverified ? (
+              <EmptyState
+                icon={MailWarning}
+                title="Verify your email first"
+                description={`Open the link we sent to ${me.email} to create API keys. Use the banner above to get a new link.`}
+              />
+            ) : (
+              <EmptyState icon={KeyRound} title="No API keys" description="Create a key to call the API from your application." action={create} />
+            )}
           </div>
         )}
       </Card>

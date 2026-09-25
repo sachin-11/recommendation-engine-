@@ -4,15 +4,18 @@
 #   ./scripts/e2e_test.sh                       # against http://localhost:8000
 #   RECO_API=https://api.example.com ./scripts/e2e_test.sh
 #
-# Registers a throwaway tenant, uploads 10 HR jobs, waits for embedding, runs by-text and
-# by-profile recommendations, sends feedback, checks analytics, then deletes the tenant
-# (and its vectors). Prints PASS/FAIL per step; exits 1 if any step failed.
-# Needs: bash, curl, and python3 (or python) for JSON parsing.
+# Registers a throwaway tenant, verifies its email through Mailpit, uploads 10 HR jobs,
+# waits for embedding, runs by-text and by-profile recommendations, sends feedback, checks
+# analytics, then deletes the tenant (and its vectors). Prints PASS/FAIL per step; exits 1
+# if any step failed.
+# Needs: bash, curl, python3 (or python) for JSON parsing, and the API sending email to
+# Mailpit (the default with docker compose; set MAILPIT_URL if it is elsewhere).
 set -uo pipefail
 
 RECO_API="${RECO_API:-http://localhost:8000}"
 API="$RECO_API/api/v1"
 BATCH_TIMEOUT="${BATCH_TIMEOUT:-180}"
+MAILPIT_URL="${MAILPIT_URL:-http://localhost:8025}"
 PY=""
 # The first interpreter that actually runs (Windows has a python3 stub that only opens the Store).
 for candidate in python3 python; do
@@ -78,8 +81,39 @@ else
   echo; echo "Cannot continue without a tenant."; exit 1
 fi
 
-# ---------------------------------------------------------------- 2. API key
+# ---------------------------------------------------------------- 1b. verify email
 API_KEY="$REGISTER_KEY"
+# verification_token -> the token from the newest verification email to $EMAIL in Mailpit
+verification_token() {
+  "$PY" - "$MAILPIT_URL" "$EMAIL" <<'PYEOF' 2>/dev/null | tr -d '\r'
+import json, re, sys, urllib.parse, urllib.request
+base, email = sys.argv[1].rstrip("/"), sys.argv[2]
+query = urllib.parse.quote(f'to:"{email}" subject:"Confirm your email"')
+found = json.load(urllib.request.urlopen(f"{base}/api/v1/search?query={query}", timeout=5))
+if found.get("messages"):
+    message = json.load(urllib.request.urlopen(f"{base}/api/v1/message/{found['messages'][0]['ID']}", timeout=5))
+    match = re.search(r"/verify-email\?token=([\w-]+)", message.get("Text", ""))
+    print(match.group(1) if match else "")
+PYEOF
+}
+TOKEN=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  TOKEN="$(verification_token)"
+  [ -n "$TOKEN" ] && break
+  sleep 1
+done
+if [ -z "$TOKEN" ]; then
+  fail "1b. Verify email: no verification email for $EMAIL in Mailpit at $MAILPIT_URL"
+else
+  request POST /auth/verify-email "{\"token\": \"$TOKEN\"}"
+  if [ "$STATUS" = "200" ] && [ "$(json "d['email_verified']")" = "True" ]; then
+    pass "1b. Verify email from the Mailpit inbox"
+  else
+    fail "1b. Verify email: HTTP $STATUS $(head -c 300 "$BODY_FILE")"
+  fi
+fi
+
+# ---------------------------------------------------------------- 2. API key
 request POST /me/api-keys '{"name": "e2e-backend"}'
 NEW_KEY="$(json "d.get('api_key', '')")"
 if [ "$STATUS" = "201" ] && [[ "$NEW_KEY" == reco_* ]]; then

@@ -6,6 +6,7 @@ against a real Postgres instead. Note: tables are dropped after each test.
 """
 
 import os
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
@@ -20,6 +21,15 @@ os.environ["ALLOWED_ORIGINS"] = "http://localhost:3000"
 os.environ["LANGSMITH_TRACING"] = "false"
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 os.environ["ADMIN_API_KEY"] = "test-admin-key-for-pytest-only-0123456789"
+# Keep outgoing email in MemoryEmailSender.outbox.
+os.environ["EMAIL_BACKEND"] = "memory"
+os.environ["DASHBOARD_URL"] = "http://dashboard.test"
+# docker compose points SMTP at Mailpit; tests must not depend on that.
+os.environ["SMTP_HOST"] = ""
+os.environ["SMTP_USERNAME"] = ""
+os.environ["SMTP_PASSWORD"] = ""
+os.environ["SMTP_PORT"] = "587"
+os.environ["SMTP_SECURITY"] = "starttls"
 
 import fakeredis
 import pytest
@@ -33,6 +43,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool, StaticPool
 
 from app.core.database import get_db, get_session_factory
+from app.core.email import EmailMessage, MemoryEmailSender
 from app.core.redis_client import get_redis
 from app.main import create_app
 from app.models import Base
@@ -59,6 +70,23 @@ async def db_engine() -> AsyncIterator[AsyncEngine]:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.drop_all)
     await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def outbox() -> list[EmailMessage]:
+    """Emails sent during the test, oldest first."""
+    MemoryEmailSender.outbox.clear()
+    return MemoryEmailSender.outbox
+
+
+def link_token(to: str, path: str) -> str:
+    """The token from the newest email to `to` whose link points at `path`."""
+    pattern = re.compile(rf"http://dashboard\.test{re.escape(path)}\?token=([\w-]+)")
+    for message in reversed(MemoryEmailSender.outbox):
+        match = pattern.search(message.text)
+        if message.to == to and match:
+            return match.group(1)
+    raise AssertionError(f"no {path} email to {to}")
 
 
 @pytest.fixture
@@ -153,6 +181,7 @@ async def register_tenant(
     domain_type: str = "HR",
     domain_config: dict[str, Any] | None = None,
 ) -> TenantAuth:
+    """Sign up, verify the email from the outbox, and return an integration API key."""
     payload: dict[str, Any] = {
         "name": email.split("@")[0],
         "email": email,
@@ -164,7 +193,17 @@ async def register_tenant(
     response = await client.post("/api/v1/auth/register", json=payload)
     assert response.status_code == 201, response.text
     body = response.json()
-    return TenantAuth(body["tenant"]["id"], body["api_key"], body["tenant"]["domain_config"])
+    verified = await client.post(
+        "/api/v1/auth/verify-email", json={"token": link_token(email, "/verify-email")}
+    )
+    assert verified.status_code == 200, verified.text
+    created = await client.post(
+        "/api/v1/me/api-keys", json={"name": "test"}, headers={"X-API-Key": body["api_key"]}
+    )
+    assert created.status_code == 201, created.text
+    return TenantAuth(
+        body["tenant"]["id"], created.json()["api_key"], body["tenant"]["domain_config"]
+    )
 
 
 @pytest.fixture

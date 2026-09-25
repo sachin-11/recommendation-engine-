@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, Response, 
 from app.core.config import settings
 from app.core.exceptions import BadRequestError, ServiceUnavailableError
 from app.middleware.auth import AuthDep, authenticate
-from app.middleware.rate_limit import RateLimiterDep, enforce_request_rate
+from app.middleware.rate_limit import RateLimiterDep, daily_item_limit, enforce_request_rate
 from app.models.item import EmbeddingStatus
 from app.models.item_batch import ItemBatch
 from app.schemas.account import BulkDeleteRequest, BulkDeleteResponse
@@ -96,7 +96,7 @@ async def upload_items(
             f"async=false supports at most {settings.MAX_SYNC_ITEMS} items; "
             f"use async=true for {len(items)}"
         )
-    await limiter.consume_items(auth.tenant.id, len(items))
+    await limiter.consume_items(auth.tenant.id, len(items), daily_item_limit(auth.tenant))
 
     if payload.run_async:
         batch = await service.ingest_async(items)
@@ -135,7 +135,7 @@ async def upload_items_csv(
     if len(content) > settings.MAX_CSV_BYTES:
         raise BadRequestError(f"CSV is larger than {settings.MAX_CSV_BYTES // (1024 * 1024)} MB")
     parsed = parse_items_csv(content, auth.tenant.domain_config)
-    await limiter.consume_items(auth.tenant.id, len(parsed.items))
+    await limiter.consume_items(auth.tenant.id, len(parsed.items), daily_item_limit(auth.tenant))
 
     batch = await service.ingest_async(parsed.items)
     background_tasks.add_task(run_batch, pipeline, batch.id)

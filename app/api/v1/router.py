@@ -39,7 +39,8 @@ tenants_router = APIRouter(
     responses={409: {"model": ErrorResponse, "description": "Email already registered"}},
 )
 async def create_tenant(payload: TenantCreate, service: TenantServiceDep) -> TenantResponse:
-    tenant = await service.create_tenant(payload)
+    # Created by the operator, who vouches for the address.
+    tenant = await service.create_tenant(payload, verified=True)
     return TenantResponse.model_validate(tenant)
 
 

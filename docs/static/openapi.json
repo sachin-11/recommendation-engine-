@@ -2540,7 +2540,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Create a tenant with a dashboard password and its first API key",
+        "summary": "Create a tenant with a dashboard password and sign it in",
         "operationId": "register",
         "requestBody": {
           "content": {
@@ -2573,6 +2573,16 @@
               }
             }
           },
+          "429": {
+            "description": "Too many sign-ups from this address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -2584,7 +2594,7 @@
             }
           }
         },
-        "description": "Create a tenant with a dashboard password. Returns the tenant and its first API key, which is shown only once."
+        "description": "Create a tenant with a dashboard password and sign it in: the response carries a 7-day session key. A verification link is emailed; until it is opened the account cannot create API keys and can ingest at most 100 items a day."
       }
     },
     "/api/v1/auth/login": {
@@ -2626,7 +2636,7 @@
             }
           },
           "429": {
-            "description": "Too many attempts",
+            "description": "Too many attempts, or account locked",
             "content": {
               "application/json": {
                 "schema": {
@@ -2646,7 +2656,7 @@
             }
           }
         },
-        "description": "Exchange email and password for a 7-day session key, used by the dashboard. Limited to 10 attempts per minute per email."
+        "description": "Exchange email and password for a 7-day session key, used by the dashboard. Limited to 10 attempts per minute per email; after 5 wrong passwords the email is locked for 15 minutes (429 with Retry-After)."
       }
     },
     "/api/v1/auth/logout": {
@@ -2717,6 +2727,249 @@
           }
         ],
         "description": "Revoke the session key used for this request. Integration keys are not affected."
+      }
+    },
+    "/api/v1/auth/verify-email": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Confirm the account email with the token from the verification link",
+        "operationId": "verifyEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, used or expired link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Confirm the account email with the token from the emailed link. Tokens work once and expire after 24 hours."
+      }
+    },
+    "/api/v1/auth/resend-verification": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Email a new verification link to the signed-in tenant",
+        "operationId": "resendVerification",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Email a new verification link to the signed-in tenant; older links stop working. At most one per minute."
+      }
+    },
+    "/api/v1/auth/forgot-password": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Email a password reset link (same answer whether or not the account exists)",
+        "operationId": "forgotPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Email a password reset link. The response is the same whether or not the account exists, so it cannot be used to discover accounts."
+      }
+    },
+    "/api/v1/auth/reset-password": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Set a new password with the token from the reset link; signs out all sessions",
+        "operationId": "resetPassword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, used or expired link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Set a new password with the token from the reset link (single use, 60 minutes). Signs out every dashboard session; integration API keys keep working."
       }
     },
     "/api/v1/me": {
@@ -3119,6 +3372,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "Email not verified yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3126,7 +3389,7 @@
             "ApiKeyAuth": []
           }
         ],
-        "description": "Create an API key. The plain key is in the response once; store it securely."
+        "description": "Create an API key. The plain key is in the response once; store it securely. Returns 403 until the account email is verified."
       }
     },
     "/api/v1/me/api-keys/{key_id}": {
@@ -4245,6 +4508,21 @@
         ],
         "title": "FeedbackType"
       },
+      "ForgotPasswordRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "ForgotPasswordRequest"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4703,6 +4981,10 @@
           "has_password": {
             "type": "boolean",
             "title": "Has Password"
+          },
+          "email_verified": {
+            "type": "boolean",
+            "title": "Email Verified"
           }
         },
         "type": "object",
@@ -4715,9 +4997,23 @@
           "is_active",
           "created_at",
           "updated_at",
-          "has_password"
+          "has_password",
+          "email_verified"
         ],
         "title": "MeResponse"
+      },
+      "MessageResponse": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "MessageResponse"
       },
       "ProfileRecommendRequest": {
         "properties": {
@@ -4916,24 +5212,51 @@
           "api_key": {
             "type": "string",
             "title": "Api Key",
-            "description": "The tenant's first API key. Shown only once."
+            "description": "A 7-day dashboard session key; send it as X-API-Key. Create integration keys with POST /me/api-keys once the email is verified."
           },
-          "key": {
-            "$ref": "#/components/schemas/ApiKeyResponse"
-          },
-          "warning": {
+          "expires_at": {
             "type": "string",
-            "title": "Warning",
-            "default": "Save this key, it won't be shown again"
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "verification_required": {
+            "type": "boolean",
+            "title": "Verification Required",
+            "description": "True until the emailed link is opened; API keys cannot be created until then."
           }
         },
         "type": "object",
         "required": [
           "tenant",
           "api_key",
-          "key"
+          "expires_at",
+          "verification_required"
         ],
         "title": "RegisterResponse"
+      },
+      "ResetPasswordRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Token",
+            "description": "The token from the reset link."
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "ResetPasswordRequest"
       },
       "SyncUploadResponse": {
         "properties": {
@@ -5287,6 +5610,23 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerifyEmailRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 16,
+            "title": "Token",
+            "description": "The token from the verification link."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "VerifyEmailRequest"
       }
     },
     "securitySchemes": {

@@ -58,17 +58,39 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
     ("get", "/health"): ("getHealth", "Returns 200 when the database and Redis respond, else 503."),
     ("post", "/api/v1/auth/register"): (
         "register",
-        "Create a tenant with a dashboard password. Returns the tenant and its first API key, "
-        "which is shown only once.",
+        "Create a tenant with a dashboard password and sign it in: the response carries a "
+        "7-day session key. A verification link is emailed; until it is opened the account "
+        "cannot create API keys and can ingest at most 100 items a day.",
     ),
     ("post", "/api/v1/auth/login"): (
         "login",
         "Exchange email and password for a 7-day session key, used by the dashboard. "
-        "Limited to 10 attempts per minute per email.",
+        "Limited to 10 attempts per minute per email; after 5 wrong passwords the email is "
+        "locked for 15 minutes (429 with Retry-After).",
     ),
     ("post", "/api/v1/auth/logout"): (
         "logout",
         "Revoke the session key used for this request. Integration keys are not affected.",
+    ),
+    ("post", "/api/v1/auth/verify-email"): (
+        "verifyEmail",
+        "Confirm the account email with the token from the emailed link. Tokens work once "
+        "and expire after 24 hours.",
+    ),
+    ("post", "/api/v1/auth/resend-verification"): (
+        "resendVerification",
+        "Email a new verification link to the signed-in tenant; older links stop working. "
+        "At most one per minute.",
+    ),
+    ("post", "/api/v1/auth/forgot-password"): (
+        "forgotPassword",
+        "Email a password reset link. The response is the same whether or not the account "
+        "exists, so it cannot be used to discover accounts.",
+    ),
+    ("post", "/api/v1/auth/reset-password"): (
+        "resetPassword",
+        "Set a new password with the token from the reset link (single use, 60 minutes). "
+        "Signs out every dashboard session; integration API keys keep working.",
     ),
     ("get", "/api/v1/me"): ("getMe", "The tenant that owns the API key."),
     ("put", "/api/v1/me/domain-config"): (
@@ -87,7 +109,8 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
     ),
     ("post", "/api/v1/me/api-keys"): (
         "createApiKey",
-        "Create an API key. The plain key is in the response once; store it securely.",
+        "Create an API key. The plain key is in the response once; store it securely. "
+        "Returns 403 until the account email is verified.",
     ),
     ("delete", "/api/v1/me/api-keys/{key_id}"): (
         "revokeApiKey",

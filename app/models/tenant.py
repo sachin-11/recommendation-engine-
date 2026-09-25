@@ -1,7 +1,8 @@
+from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Boolean, String, true
+from sqlalchemy import JSON, Boolean, DateTime, String, true
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -38,6 +39,10 @@ class Tenant(BaseEntity):
     )
     # Dashboard login. Null for tenants created through the API without a password.
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Set when the owner opens the verification link (or resets their password).
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     api_keys: Mapped[list["ApiKey"]] = relationship(
         back_populates="tenant",
@@ -49,6 +54,10 @@ class Tenant(BaseEntity):
     @property
     def has_password(self) -> bool:
         return self.password_hash is not None
+
+    @property
+    def email_verified(self) -> bool:
+        return self.email_verified_at is not None
 
     def __repr__(self) -> str:
         return f"<Tenant id={self.id} email={self.email!r}>"

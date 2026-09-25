@@ -18,21 +18,29 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Requests whose 401 means "wrong credentials", not "session expired".
-const AUTH_PATHS = ["/auth/login", "/auth/register"];
+// Public account requests: a 401 means "wrong credentials", not "session expired", and
+// their 400/429 errors are shown in the form, not as toasts.
+const AUTH_PATHS = [
+  "/auth/login",
+  "/auth/register",
+  "/auth/verify-email",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+];
 
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiErrorBody>) => {
     const status = error.response?.status;
     const url = error.config?.url ?? "";
-    if (status === 401 && !AUTH_PATHS.some((path) => url.endsWith(path))) {
+    const isAuthPath = AUTH_PATHS.some((path) => url.endsWith(path));
+    if (status === 401 && !isAuthPath) {
       clearApiKey();
       if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
         toast.error("Your session has ended. Please sign in again.", { id: "session" });
         window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
       }
-    } else if (status === 429) {
+    } else if (status === 429 && !isAuthPath) {
       const retry = error.response?.headers["retry-after"];
       toast.warning("Rate limit reached", {
         id: "rate-limit",

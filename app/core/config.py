@@ -77,6 +77,35 @@ class Settings(BaseSettings):
     ADMIN_API_KEY: SecretStr | None = None
     ALLOWED_ORIGINS: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
+    # --- Accounts and email ---
+    # Unverified accounts can use the dashboard but cannot create API keys, and ingest at
+    # most UNVERIFIED_DAILY_ITEM_LIMIT items a day.
+    REQUIRE_EMAIL_VERIFICATION: bool = True
+    UNVERIFIED_DAILY_ITEM_LIMIT: int = Field(default=100, gt=0)
+    EMAIL_VERIFICATION_TTL_HOURS: int = Field(default=24, gt=0)
+    PASSWORD_RESET_TTL_MINUTES: int = Field(default=60, gt=0)
+    # Failed logins for one email before it is locked for LOGIN_LOCKOUT_MINUTES.
+    LOGIN_MAX_FAILURES: int = Field(default=5, gt=0)
+    LOGIN_LOCKOUT_MINUTES: int = Field(default=15, gt=0)
+    # Where links in emails point (the dashboard), without a trailing slash.
+    DASHBOARD_URL: str = "http://localhost:3000"
+    # console: log emails (development). smtp: any SMTP server. ses: Amazon SES with the
+    # AWS_* credentials below. memory: keep them (tests).
+    EMAIL_BACKEND: Literal["console", "smtp", "ses", "memory"] = "console"
+    EMAIL_FROM: str = "RecoEngine <no-reply@recoengine.local>"
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = Field(default=587, gt=0, le=65535)
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: SecretStr | None = None
+    # starttls (port 587), ssl (port 465) or none (a local catcher such as Mailpit).
+    SMTP_SECURITY: Literal["starttls", "ssl", "none"] = "starttls"
+    SMTP_TIMEOUT_SECONDS: float = Field(default=10.0, gt=0)
+    # Amazon SES (EMAIL_BACKEND=ses). The IAM user needs ses:SendRawEmail, and EMAIL_FROM
+    # must be a verified SES identity.
+    AWS_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: SecretStr | None = None
+
     # --- Operational ---
     HEALTH_CHECK_TIMEOUT_SECONDS: float = Field(default=2.0, gt=0)
     # Port for the worker's Prometheus metrics; 0 disables them.
@@ -117,6 +146,11 @@ class Settings(BaseSettings):
         "SENTRY_DSN",
         "ADMIN_API_KEY",
         "LANGSMITH_API_KEY",
+        "SMTP_PASSWORD",
+        "SMTP_HOST",
+        "SMTP_USERNAME",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
         mode="before",
     )
     @classmethod
@@ -149,6 +183,11 @@ class Settings(BaseSettings):
             raise ValueError("SCORE_LABEL_THRESHOLDS must be three descending values in [-1, 1]")
         return value
 
+    @field_validator("DASHBOARD_URL")
+    @classmethod
+    def _strip_trailing_slash(cls, value: str) -> str:
+        return value.rstrip("/")
+
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
     def _split_origins(cls, value: object) -> object:
@@ -167,6 +206,16 @@ class Settings(BaseSettings):
             problems.append("OPENAI_API_KEY is required")
         if not self.PINECONE_API_KEY:
             problems.append("PINECONE_API_KEY is required")
+        if self.EMAIL_BACKEND not in ("smtp", "ses"):
+            problems.append(
+                "EMAIL_BACKEND must be 'smtp' or 'ses' so verification and reset emails are sent"
+            )
+        elif self.EMAIL_BACKEND == "smtp" and not self.SMTP_HOST:
+            problems.append("SMTP_HOST is required when EMAIL_BACKEND=smtp")
+        elif self.EMAIL_BACKEND == "ses" and not (
+            self.AWS_ACCESS_KEY_ID and self.AWS_SECRET_ACCESS_KEY
+        ):
+            problems.append("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required for SES")
         if "*" in self.ALLOWED_ORIGINS:
             problems.append("ALLOWED_ORIGINS must not contain '*'")
         if problems:

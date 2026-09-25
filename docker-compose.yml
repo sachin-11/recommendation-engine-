@@ -47,6 +47,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       # Docker Desktop on Windows/macOS doesn't forward file events; poll for --reload.
       WATCHFILES_FORCE_POLLING: "true"
+      # Account emails go to Mailpit; read them at http://localhost:8025.
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-smtp}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURITY: ${SMTP_SECURITY:-none}
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app"
@@ -59,6 +64,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  # Catches every email the app sends, with a web inbox at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
 
   worker:
     build:

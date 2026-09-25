@@ -22,6 +22,8 @@ export interface Tenant {
   domain_config: DomainConfig;
   is_active: boolean;
   has_password: boolean;
+  /** False until the emailed link is opened; API keys need a verified email. */
+  email_verified: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -42,11 +44,16 @@ export interface ApiKeyCreated extends ApiKey {
   warning: string;
 }
 
+/** Sign-up signs the tenant in: `api_key` is a 7-day dashboard session key. */
 export interface RegisterResponse {
   tenant: Tenant;
   api_key: string;
-  key: ApiKey;
-  warning: string;
+  expires_at: string;
+  verification_required: boolean;
+}
+
+export interface MessageResponse {
+  message: string;
 }
 
 export interface LoginResponse {

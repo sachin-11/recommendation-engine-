@@ -4,27 +4,25 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, MailCheck } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
 import { configErrors, DomainConfigEditor } from "@/components/onboarding/DomainConfigEditor";
-import { QuickStart } from "@/components/onboarding/QuickStart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { JsonView } from "@/components/ui/json-view";
 import { FieldError, Label } from "@/components/ui/label";
-import { CopyButton } from "@/components/ui/misc";
 import { apiErrorMessage } from "@/lib/api";
 import { DOMAIN_PRESETS, exampleItemFor, presetFor } from "@/lib/domains";
-import { useRegister } from "@/lib/hooks/account";
+import { useRegister, useResendVerification } from "@/lib/hooks/account";
 import { cn } from "@/lib/utils";
 import { accountSchema, type AccountValues } from "@/lib/validators";
 import type { DomainConfig, DomainType } from "@/types";
 
-const STEPS = ["Account", "Domain", "Configure", "API key"];
+const STEPS = ["Account", "Domain", "Configure", "Verify email"];
 
 function Stepper({ step }: { step: number }) {
   return (
@@ -176,43 +174,44 @@ function DomainStep({
   );
 }
 
-function ApiKeyStep({
-  apiKey,
-  domainType,
-  config,
-}: {
-  apiKey: string;
-  domainType: DomainType;
-  config: DomainConfig;
-}) {
+function VerifyStep({ email, verificationRequired }: { email: string; verificationRequired: boolean }) {
   const router = useRouter();
+  const resend = useResendVerification();
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-        <p>
-          <strong>Save this key — it will not be shown again.</strong> Use it from your backend as
-          the <code className="font-mono">X-API-Key</code> header. You can create more keys later.
-        </p>
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="apiKeyValue">Your API key</Label>
-        <div className="flex gap-2">
-          <Input id="apiKeyValue" readOnly value={apiKey} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
-          <CopyButton value={apiKey} label="API key copied" />
+      <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-4 text-sm">
+        <MailCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+        <div className="space-y-2">
+          <p>
+            We sent a verification link to <strong>{email}</strong>. Open it to confirm your address.
+          </p>
+          {verificationRequired && (
+            <p className="text-muted-foreground">
+              Until then you can explore the dashboard and try a few uploads; API keys for your
+              application unlock once the email is verified.
+            </p>
+          )}
         </div>
       </div>
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Quick start</p>
-        <QuickStart
-          apiKey={apiKey}
-          exampleItem={exampleItemFor(config, domainType)}
-          exampleQuery={presetFor(domainType).exampleQuery}
-        />
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button
+          variant="outline"
+          className="sm:flex-1"
+          disabled={resend.isPending || resend.isSuccess}
+          onClick={() =>
+            resend.mutate(undefined, {
+              onSuccess: (data) => toast.success(data.message),
+              onError: (error) => toast.error("Could not send the email", { description: apiErrorMessage(error) }),
+            })
+          }
+        >
+          {resend.isPending && <Loader2 className="animate-spin" />}
+          {resend.isSuccess ? "Email sent" : "Resend email"}
+        </Button>
+        <Button className="sm:flex-1" onClick={() => router.push("/dashboard")}>
+          Go to Dashboard <ArrowRight />
+        </Button>
       </div>
-      <Button className="w-full" onClick={() => router.push("/dashboard")}>
-        Go to Dashboard <ArrowRight />
-      </Button>
     </div>
   );
 }
@@ -222,7 +221,7 @@ export default function RegisterPage() {
   const [account, setAccount] = React.useState<AccountValues>();
   const [domainType, setDomainType] = React.useState<DomainType>("HR");
   const [config, setConfig] = React.useState<DomainConfig>(presetFor("HR").config);
-  const [apiKey, setApiKey] = React.useState<string>();
+  const [registered, setRegistered] = React.useState<{ email: string; verificationRequired: boolean }>();
   const register = useRegister();
 
   const chooseDomain = (type: DomainType) => {
@@ -235,8 +234,8 @@ export default function RegisterPage() {
     register.mutate(
       { ...account, domain_type: domainType, domain_config: config },
       {
-        onSuccess: ({ registered }) => {
-          setApiKey(registered.api_key);
+        onSuccess: (data) => {
+          setRegistered({ email: data.tenant.email, verificationRequired: data.verification_required });
           setStep(3);
           toast.success("Account created");
         },
@@ -249,7 +248,7 @@ export default function RegisterPage() {
     ["Create your account", "Start with your business details."],
     ["What will you recommend?", "Pick the closest domain. You can change every field next."],
     ["Configure your items", "Tell us which fields describe an item and which ones to filter on."],
-    ["You're all set", "Here is your API key and how to make your first call."],
+    ["Check your inbox", "One last step: confirm your email address."],
   ];
 
   return (
@@ -304,7 +303,9 @@ export default function RegisterPage() {
           </div>
         )}
 
-        {step === 3 && apiKey && <ApiKeyStep apiKey={apiKey} domainType={domainType} config={config} />}
+        {step === 3 && registered && (
+          <VerifyStep email={registered.email} verificationRequired={registered.verificationRequired} />
+        )}
 
         {step < 3 && (
           <p className="mt-6 text-center text-sm text-muted-foreground">

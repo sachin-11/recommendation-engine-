@@ -10,6 +10,7 @@ import type {
   DomainConfig,
   DomainType,
   LoginResponse,
+  MessageResponse,
   RegisterResponse,
   Tenant,
 } from "@/types";
@@ -64,22 +65,50 @@ export interface RegisterValues {
   domain_config: DomainConfig;
 }
 
-/** Create the tenant, then sign in so the dashboard uses a session key, not the integration key. */
+/** Create the tenant; the response signs it in with a dashboard session key. */
 export function useRegister() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (values: RegisterValues) => {
-      const registered = (await api.post<RegisterResponse>("/auth/register", values)).data;
-      const session = (
-        await api.post<LoginResponse>("/auth/login", { email: values.email, password: values.password })
-      ).data;
-      return { registered, session };
-    },
-    onSuccess: ({ session }) => {
-      setApiKey(session.api_key);
+    mutationFn: async (values: RegisterValues) =>
+      (await api.post<RegisterResponse>("/auth/register", values)).data,
+    onSuccess: (data) => {
+      setApiKey(data.api_key);
       queryClient.clear();
-      queryClient.setQueryData(keys.me, session.tenant);
+      queryClient.setQueryData(keys.me, data.tenant);
     },
+  });
+}
+
+/** Confirm the email with the token from the link. Works signed in or not. */
+export function useVerifyEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (token: string) => (await api.post<Tenant>("/auth/verify-email", { token })).data,
+    onSuccess: (tenant) => {
+      const me = queryClient.getQueryData<Tenant>(keys.me);
+      if (me?.id === tenant.id) queryClient.setQueryData(keys.me, tenant);
+    },
+  });
+}
+
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: async () => (await api.post<MessageResponse>("/auth/resend-verification")).data,
+  });
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: async (email: string) =>
+      (await api.post<MessageResponse>("/auth/forgot-password", { email })).data,
+  });
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: async (values: { token: string; password: string }) =>
+      (await api.post<MessageResponse>("/auth/reset-password", values)).data,
+    onSuccess: () => clearApiKey(),
   });
 }
 

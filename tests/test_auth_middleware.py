@@ -25,7 +25,7 @@ async def test_valid_key_records_last_used(
     await client.get("/api/v1/items", headers=hr_tenant.headers)
 
     async with session_factory() as session:
-        key = (await session.scalars(select(ApiKey))).one()
+        key = (await session.scalars(select(ApiKey).where(ApiKey.is_session.is_(False)))).one()
         assert key.last_used_at is not None
 
 

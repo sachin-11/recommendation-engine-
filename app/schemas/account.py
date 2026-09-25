@@ -5,20 +5,20 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator
 
-from app.schemas.tenant import ApiKeyResponse, DomainConfig, TenantCreate, TenantResponse
+from app.schemas.tenant import DomainConfig, TenantCreate, TenantResponse
 
 Password = Annotated[str, StringConstraints(min_length=8, max_length=128)]
+LinkToken = Annotated[str, StringConstraints(min_length=16, max_length=128)]
 
 
 class RegisterRequest(TenantCreate):
     password: Password
 
 
-class LoginRequest(BaseModel):
+class _EmailRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
-    password: Annotated[str, StringConstraints(min_length=1, max_length=128)]
 
     @field_validator("email")
     @classmethod
@@ -26,15 +26,46 @@ class LoginRequest(BaseModel):
         return value.lower()
 
 
+class LoginRequest(_EmailRequest):
+    password: Annotated[str, StringConstraints(min_length=1, max_length=128)]
+
+
+class ForgotPasswordRequest(_EmailRequest):
+    pass
+
+
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: LinkToken = Field(description="The token from the reset link.")
+    password: Password
+
+
+class VerifyEmailRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: LinkToken = Field(description="The token from the verification link.")
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 class MeResponse(TenantResponse):
     has_password: bool
+    email_verified: bool
 
 
 class RegisterResponse(BaseModel):
     tenant: MeResponse
-    api_key: str = Field(description="The tenant's first API key. Shown only once.")
-    key: ApiKeyResponse
-    warning: str = "Save this key, it won't be shown again"
+    api_key: str = Field(
+        description="A 7-day dashboard session key; send it as X-API-Key. Create integration "
+        "keys with POST /me/api-keys once the email is verified."
+    )
+    expires_at: datetime
+    verification_required: bool = Field(
+        description="True until the emailed link is opened; API keys cannot be created until then."
+    )
 
 
 class LoginResponse(BaseModel):

@@ -9,7 +9,7 @@ import TabItem from "@theme/TabItem";
 
 # Quickstart
 
-Five steps: register, upload items, wait for embedding, get recommendations, send feedback. The examples use the HR domain; the same calls work for any domain.
+Five steps: create an account and a key, upload items, wait for embedding, get recommendations, send feedback. The examples use the HR domain; the same calls work for any domain.
 
 Install an SDK if you want one (optional — every step also shows `curl`):
 
@@ -38,14 +38,14 @@ pip install recoengine
 </TabItem>
 </Tabs>
 
-## 1. Register and get an API key
+## 1. Create an account and an API key
 
-Create your account once — in the dashboard, or with the API. The response contains your first API key, **shown only once**.
+The quickest way is the dashboard: **Sign up → open the link we email you → API keys → Create new key**. Copy the key; it is **shown only once**.
 
-<Tabs groupId="lang">
-<TabItem value="curl" label="curl">
+The same flow over the API:
 
 ```bash
+# 1. Sign up. The response signs you in with a 7-day dashboard session key.
 curl -X POST $RECO_API/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
@@ -54,48 +54,22 @@ curl -X POST $RECO_API/api/v1/auth/register \
     "password": "a-strong-password",
     "domain_type": "HR"
   }'
-# → {"tenant": {...}, "api_key": "reco_…", "warning": "Save this key, it won't be shown again"}
+# → {"tenant": {..., "email_verified": false}, "api_key": "reco_…(session)",
+#    "expires_at": "…", "verification_required": true}
+
+# 2. Open the link in the "Confirm your email" message (it expires in 24 hours).
+
+# 3. Create an integration key with the session key. Until the email is verified this
+#    returns 403, and uploads are limited to 100 items a day.
+curl -X POST $RECO_API/api/v1/me/api-keys \
+  -H "X-API-Key: <session key from step 1>" -H "Content-Type: application/json" \
+  -d '{"name": "production-backend"}'
+# → {"api_key": "reco_…", "warning": "Save this key, it won't be shown again", ...}
 
 export RECO_API_KEY=reco_…
 ```
 
-</TabItem>
-<TabItem value="js" label="JavaScript">
-
-```ts
-const res = await fetch("https://api.recoengine.io/api/v1/auth/register", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    name: "Acme Hiring",
-    email: "you@acme.com",
-    password: "a-strong-password",
-    domain_type: "HR",
-  }),
-});
-const { api_key } = await res.json(); // store it as RECO_API_KEY
-```
-
-</TabItem>
-<TabItem value="python" label="Python">
-
-```python
-import httpx
-
-res = httpx.post(
-    "https://api.recoengine.io/api/v1/auth/register",
-    json={
-        "name": "Acme Hiring",
-        "email": "you@acme.com",
-        "password": "a-strong-password",
-        "domain_type": "HR",
-    },
-)
-api_key = res.json()["api_key"]  # store it as RECOENGINE_API_KEY
-```
-
-</TabItem>
-</Tabs>
+No email? `POST /api/v1/auth/resend-verification` (with the session key) sends a new link. Forgot the password? Use **Forgot password?** on the sign-in page, or `POST /api/v1/auth/forgot-password`.
 
 `domain_type: "HR"` uses the HR preset config. Pass your own `domain_config` to choose fields — see the [HR guide](../guides/hr-domain).
 

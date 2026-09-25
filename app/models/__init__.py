@@ -1,6 +1,7 @@
 """Import every model here so `Base.metadata` is complete for Alembic and tests."""
 
 from app.models.api_key import ApiKey
+from app.models.auth_token import AuthToken, AuthTokenPurpose
 from app.models.base import Base, BaseEntity
 from app.models.item import EmbeddingStatus, Item
 from app.models.item_batch import BatchStatus, ItemBatch
@@ -11,6 +12,8 @@ from app.models.user_feedback import FeedbackType, UserFeedback
 
 __all__ = [
     "ApiKey",
+    "AuthToken",
+    "AuthTokenPurpose",
     "Base",
     "BaseEntity",
     "BatchStatus",

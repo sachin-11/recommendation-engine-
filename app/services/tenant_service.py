@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.core.security import generate_api_key
 from app.models.api_key import ApiKey
+from app.models.base import utcnow
 from app.models.tenant import Tenant
 from app.schemas.tenant import ApiKeyCreate, TenantCreate
 
@@ -22,7 +23,9 @@ class TenantService:
 
     # --- Tenants ---
 
-    async def create_tenant(self, data: TenantCreate, password_hash: str | None = None) -> Tenant:
+    async def create_tenant(
+        self, data: TenantCreate, password_hash: str | None = None, *, verified: bool = False
+    ) -> Tenant:
         if await self._email_exists(data.email):
             raise ConflictError(f"A tenant with email '{data.email}' already exists")
 
@@ -32,6 +35,7 @@ class TenantService:
             domain_type=data.domain_type,
             domain_config=data.resolved_domain_config().model_dump(mode="json"),
             password_hash=password_hash,
+            email_verified_at=utcnow() if verified else None,
         )
         self._session.add(tenant)
         try:
