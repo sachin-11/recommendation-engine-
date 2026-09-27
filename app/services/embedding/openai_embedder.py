@@ -19,6 +19,7 @@ from tenacity import (
 )
 
 from app.core.config import settings
+from app.core.metrics import track_external_call
 from app.core.tracing import MAX_TRACED_TEXTS, add_run_metadata, clip, set_run_usage, traced
 from app.core.usage import add_embedding_usage
 
@@ -148,7 +149,7 @@ class OpenAIEmbedder:
                     min(self._retry_attempts or RETRY_ATTEMPTS, RETRY_ATTEMPTS)
                 ),
             ):
-                with attempt:
+                with attempt, track_external_call("openai", "embeddings"):
                     response = await self._client.embeddings.create(
                         model=self.model,
                         input=texts,

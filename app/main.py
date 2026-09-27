@@ -24,6 +24,7 @@ from app.core.exceptions import AppException
 from app.core.logging import configure_sentry, configure_structlog
 from app.core.redis_client import check_redis, create_redis_client, get_redis
 from app.core.tracing import configure_tracing
+from app.middleware.metrics import MetricsMiddleware
 from app.middleware.request_id import RequestIDMiddleware
 from app.schemas.common import ErrorBody, ErrorDetail, ErrorResponse, HealthResponse
 from app.services.embedding.pinecone_service import get_pinecone_service
@@ -175,6 +176,8 @@ def create_app() -> FastAPI:
             expose_headers=["X-Cache", "X-Request-ID", "Retry-After"],
         )
 
+    # Wraps CORS and every route, so preflights and auth failures are counted too.
+    app.add_middleware(MetricsMiddleware)
     # Added last, so it wraps CORS and every route: all responses carry X-Request-ID.
     app.add_middleware(RequestIDMiddleware)
 

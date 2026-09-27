@@ -12,7 +12,7 @@ import contextlib
 import logging
 import signal
 
-from prometheus_client import start_http_server
+from prometheus_client import Gauge, start_http_server
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
@@ -32,6 +32,13 @@ logger = logging.getLogger("embedding_worker")
 # How long to wait before retrying after OpenAI/Pinecone was unavailable.
 UPSTREAM_BACKOFF_SECONDS = 30.0
 ERROR_BACKOFF_SECONDS = 10.0
+
+# Defined here, not in app.core.metrics, so API processes do not export a stale copy.
+LAST_POLL = Gauge(
+    "worker_last_poll_timestamp_seconds",
+    "Unix time the worker last finished a poll, whatever its outcome. "
+    "Stops moving when the worker hangs or dies.",
+)
 
 
 async def run(stop: asyncio.Event) -> None:
@@ -62,6 +69,7 @@ async def run(stop: asyncio.Event) -> None:
             except Exception:
                 logger.exception("Worker iteration failed")
                 delay = ERROR_BACKOFF_SECONDS
+            LAST_POLL.set_to_current_time()
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=delay)
     finally:

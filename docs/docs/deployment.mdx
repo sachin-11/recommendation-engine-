@@ -12,7 +12,7 @@ The repository ships a production setup for one host (an EC2 instance):
 |---|---|
 | Backend image (multi-stage, non-root, health check) | `Dockerfile` |
 | Dashboard image (Next.js standalone) | `dashboard/Dockerfile` |
-| Stack: API, worker, dashboard, Postgres + nightly backups, Redis (AOF), nginx, Watchtower, Prometheus, Grafana | `docker-compose.prod.yml` |
+| Stack: API, worker, dashboard, Postgres + nightly backups, Redis (AOF), nginx, Watchtower, Prometheus, Alertmanager, Grafana, host and database exporters | `docker-compose.prod.yml` |
 | Reverse proxy: `/api` → API, `/` → dashboard, rate limits, gzip, security headers, TLS-ready | `nginx/` |
 | Settings | `.env.production.example` |
 | AWS resources (ECR, EC2, Elastic IP, optional RDS / ElastiCache) | `scripts/aws-setup.sh` |
@@ -57,8 +57,9 @@ The script builds both images, pushes them to ECR, then on the server pulls them
 
 ## Monitoring
 
-- `GET /metrics` (blocked at nginx; scraped internally) exposes `reco_requests_total`, `reco_latency_seconds`, `items_total` and `embedding_pipeline_duration_seconds`. The worker exposes its own on port 9100.
+- `GET /metrics` (blocked at nginx; scraped internally) exposes HTTP, recommendation, OpenAI/Pinecone and embedding-backlog metrics. The worker exposes its own on port 9100.
 - Grafana has a pre-built **RecoEngine overview** dashboard. It listens on `127.0.0.1:3001`; open it with `ssh -L 3001:localhost:3001 ubuntu@<server>`.
+- Alertmanager posts the alert rules to Slack once `monitoring/secrets/slack_webhook_url` exists. [Monitoring and alerts](./monitoring.mdx) lists every metric and alert, and what to do when one fires.
 - Set `SENTRY_DSN` to report errors to Sentry.
 - Account emails (verification, password reset, password changed) go through SMTP. Production refuses to start without a real sender: `EMAIL_BACKEND=ses` (Amazon SES with the `AWS_*` credentials; the IAM user needs `ses:SendRawEmail` and `EMAIL_FROM` must be a verified identity) or `EMAIL_BACKEND=smtp` with `SMTP_HOST`; any SMTP provider works (Resend: `smtp.resend.com`, user `resend`, password = API key; or Amazon SES, SendGrid, Postmark). Set `DASHBOARD_URL` to the public dashboard address, since email links point there. With `docker compose` in development, every email lands in Mailpit at http://localhost:8025.
 - OpenAI embedding tokens are counted per tenant, per day, for uploads and queries. `GET /api/v1/analytics/tokens` (and the Analytics page) shows the totals and an estimated cost from `EMBEDDING_PRICE_PER_MILLION_TOKENS` (default `0.02`); every recommendation response carries its own `embedding_tokens`, and Prometheus exports `openai_embedding_tokens_total`.

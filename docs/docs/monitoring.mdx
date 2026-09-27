@@ -1,0 +1,100 @@
+---
+sidebar_position: 11
+title: Monitoring and alerts
+description: What RecoEngine measures in production, where to look, and what to do when an alert fires.
+---
+
+# Monitoring and alerts
+
+The production stack (`docker-compose.prod.yml`) runs Prometheus, Alertmanager and Grafana next to the API, plus three exporters: `node-exporter` (the host's disk, memory and CPU), `postgres-exporter` and `redis-exporter`. Prometheus scrapes the API, the worker and the exporters every 15 seconds, evaluates the rules in `monitoring/alerts.yml`, and Alertmanager posts firing and resolved alerts to Slack.
+
+With RDS or ElastiCache instead of the bundled databases, point `postgres-exporter` and `redis-exporter` at those endpoints, or drop them and use the CloudWatch alarms of those services.
+
+| Tool | Address on the server | Open it with |
+|---|---|---|
+| Grafana (dashboard **RecoEngine overview**) | `127.0.0.1:3001` | `ssh -L 3001:localhost:3001 ubuntu@<server>`, then http://localhost:3001 |
+| Prometheus (queries, alert state) | `127.0.0.1:9090` | `ssh -L 9090:localhost:9090 ubuntu@<server>`, then http://localhost:9090/alerts |
+| Alertmanager (silences) | `127.0.0.1:9093` | `ssh -L 9093:localhost:9093 ubuntu@<server>` |
+
+To try the same setup locally, start the `monitoring` profile next to the development stack: `docker compose --profile monitoring up -d`. Prometheus is then at http://localhost:9090, Alertmanager at http://localhost:9093 and Grafana at http://localhost:3001, with no sign-in.
+
+## Set up Slack alerts
+
+1. In Slack, create an app with an **Incoming Webhook** for your alerts channel and copy the webhook URL.
+2. On the server:
+
+   ```bash
+   mkdir -p monitoring/secrets
+   echo 'https://hooks.slack.com/services/…' > monitoring/secrets/slack_webhook_url
+   chmod 600 monitoring/secrets/slack_webhook_url
+   docker compose -f docker-compose.prod.yml --env-file .env.production up -d prometheus alertmanager
+   ```
+
+`monitoring/secrets/` is ignored by git. Without the file, Alertmanager still runs and alerts still show in Prometheus, but nothing reaches Slack.
+
+To send a test alert:
+
+```bash
+docker compose -f docker-compose.prod.yml exec alertmanager \
+  amtool alert add TestAlert severity=warning --annotation='summary="Test from RecoEngine"' \
+  --alertmanager.url=http://localhost:9093
+```
+
+:::caution Monitoring runs on the same host
+If the whole server goes down, Prometheus and Alertmanager go down with it and no alert is sent. Add an external uptime check on `https://<your-domain>/health` (UptimeRobot, Better Stack, or Grafana Cloud Synthetic Monitoring) so that case is covered too.
+:::
+
+## What is measured
+
+| Metric | From | Tells you |
+|---|---|---|
+| `http_requests_total{method, route, status}` | API | Traffic and errors for every route. `route` is the template (`/api/v1/items/{external_id}`); requests that match no route are `unmatched`. |
+| `http_request_duration_seconds{method, route}` | API | Latency per route, auth and rate limiting included. |
+| `reco_requests_total`, `reco_latency_seconds` | API | Recommendations per tenant and query type, and their latency. |
+| `external_calls_total{service, operation, outcome}` | API, worker | Each call to OpenAI (`embeddings`) or Pinecone (`query`, `upsert`, `delete`). One sample per attempt, so OpenAI retries are visible. `outcome` is `ok`, `timeout`, `rate_limited`, `connection_error`, `client_error`, `not_found` or `error`. |
+| `external_call_duration_seconds{service, operation}` | API, worker | How long OpenAI and Pinecone take. |
+| `items_total{tenant_id, status}` | API (read from the database) | Items per embedding status. |
+| `oldest_pending_item_age_seconds` | API (read from the database) | How long the oldest PENDING item has waited. Near 0 when embedding keeps up. |
+| `worker_last_poll_timestamp_seconds` | worker | When the worker last finished a poll. Stops moving if the worker hangs. |
+| `embedding_pipeline_duration_seconds`, `openai_embedding_tokens_total` | API, worker | Time per embedded chunk; tokens used. |
+| `node_filesystem_*`, `node_memory_*`, `node_cpu_seconds_total`, `node_vmstat_oom_kill` | node-exporter | Disk space per mount, memory, CPU and out-of-memory kills of the server itself. |
+| `pg_up`, `pg_stat_activity_count`, `pg_settings_max_connections`, `pg_database_size_bytes` | postgres-exporter | Whether Postgres answers, connections in use, database size. |
+| `redis_up`, `redis_memory_used_bytes`, `redis_keyspace_hits_total` / `_misses_total` | redis-exporter | Whether Redis answers, its memory, and how often cache lookups hit. |
+
+The API runs several uvicorn processes. The runtime image sets `PROMETHEUS_MULTIPROC_DIR`, so `/metrics` adds up the counters of all of them. Values read from the database are computed on each scrape.
+
+The **Reliability** row of the Grafana dashboard shows the application side: 5xx rate, time since the last worker poll, oldest PENDING item, OpenAI and Pinecone failure rate, requests by status, p95 latency by route, 5xx by route, external calls by outcome and their latency. The **Server and databases** row shows disk free (with a 24-hour projection), CPU and memory, Postgres connections and size, Redis memory and cache hit ratio.
+
+## Alerts and what to do
+
+Thresholds live in `monitoring/alerts.yml`. They are starting points; adjust them once you know your normal traffic.
+
+| Alert | Fires when | First thing to check |
+|---|---|---|
+| **ApiDown** (critical) | Prometheus cannot scrape the API for 2 minutes | `docker compose ps app`, `docker compose logs --tail 100 app`. A failed deploy or a database that is down are the usual causes. |
+| **WorkerDown** (critical) | Prometheus cannot scrape the worker for 5 minutes | `docker compose logs --tail 100 worker`. Uploads still work, but items that fail once are not retried. |
+| **WorkerStalled** (critical) | The worker has not finished a poll for 10 minutes | The process is up but stuck. `docker compose restart worker`, then check its logs. |
+| **EmbeddingBacklogStuck** (warning) | The oldest PENDING item is older than 30 minutes, for 10 minutes | The **External calls by outcome** panel. OpenAI or Pinecone failures send items back to PENDING. A very large import can also trigger it. |
+| **HighHttpErrorRate** (critical) | More than 2% of requests return 5xx for 5 minutes (health checks and scrapes excluded) | The **5xx by route** panel shows which route, and Sentry (with `SENTRY_DSN` set) shows the exception. |
+| **SlowRecommendations** (warning) | Recommendation p95 above 1 s for 10 minutes | The **External call p95 latency** panel. Slow Pinecone queries or OpenAI embeddings are the usual cause. |
+| **ExternalServiceFailing** (warning) | More than 10% of OpenAI or Pinecone calls fail for 5 minutes | The `outcome` label. For `rate_limited`, raise your OpenAI rate limits or spread imports out. For `timeout` or `connection_error`, check [status.openai.com](https://status.openai.com) or [status.pinecone.io](https://status.pinecone.io). |
+| **EmbeddingTokenSpike** (warning) | More than 20M embedding tokens in an hour (~$0.40 at `text-embedding-3-small` prices) | The Analytics page, per tenant: a large import, a rebuild, or a client stuck in a loop. |
+| **FailedItemsRising** (warning) | More than 100 items became FAILED in 30 minutes | Filter the Items page by FAILED; each item shows the error it got. |
+| **DiskSpaceLow** (warning) / **DiskSpaceCritical** (critical) | Less than 15% / 5% free on a disk | `docker system df`, then `docker system prune` for old images; grow the EBS volume if data is what grew. Postgres stops accepting writes on a full disk. |
+| **DiskWillFillIn24h** (warning) | At the rate of the last 6 hours the disk is full within a day (and is already under 40% free) | What is growing: `du -sh /var/lib/docker/volumes/*`. Usually Postgres data, backups or container logs. |
+| **MemoryLow** (warning) | Less than 10% of memory available for 10 minutes | `docker stats` shows which container uses it. |
+| **OutOfMemoryKill** (critical) | The kernel killed a process for lack of memory | `docker compose ps` shows what restarted; `dmesg \| grep -i oom` names the process. |
+| **CpuSaturated** (warning) | CPU more than 90% busy for 15 minutes | `docker stats`; a larger instance if it is the API under real load. |
+| **PostgresDown** / **RedisDown** (critical) | The exporter cannot reach the database for 1 minute | `docker compose logs --tail 100 postgres` (or `redis`). A full disk is a common cause. |
+| **PostgresConnectionsHigh** (warning) | More than 80% of `max_connections` in use for 5 minutes | Leaked sessions or too many API processes for the pool size. |
+| **PostgresLongTransaction** (warning) | A transaction open for more than 10 minutes | `SELECT pid, state, now() - xact_start, query FROM pg_stat_activity ORDER BY xact_start;`, then `pg_cancel_backend(pid)`. |
+| **RedisMemoryHigh** (warning) | Redis uses more than 30% of the host's memory | Redis runs without `maxmemory`, so it grows until the host runs out. Lower `EMBEDDING_CACHE_TTL_SECONDS`. |
+| **MonitoringTargetDown** (warning) | An exporter or Alertmanager cannot be scraped for 5 minutes | `docker compose ps`. While it is down, the alerts that depend on it cannot fire. |
+
+To silence an alert during planned work, open Alertmanager (see the table above) and create a silence.
+
+## Beyond metrics
+
+- **Errors:** set `SENTRY_DSN` to send API and worker exceptions to Sentry, with the release and environment.
+- **Logs:** in production the API writes JSON lines, each with the `request_id` that is also returned as the `X-Request-ID` header. `docker compose logs app | grep <request-id>` finds everything for one request.
+- **Traces:** set `LANGSMITH_TRACING=true` to see each recommendation step by step in LangSmith (see [Self-hosting and deployment](./deployment.mdx#monitoring)).

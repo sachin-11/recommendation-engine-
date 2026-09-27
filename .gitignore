@@ -15,3 +15,6 @@ htmlcov/
 !.env.example
 !.env.production.example
 node_modules/
+
+# Alertmanager secrets (Slack webhook URL)
+monitoring/secrets/

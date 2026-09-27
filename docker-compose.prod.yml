@@ -6,7 +6,7 @@
 #
 # Using RDS / ElastiCache instead of the bundled postgres / redis: point DATABASE_URL and
 # REDIS_URL at them and start only the services you need, e.g.
-#   docker compose ... up -d app worker dashboard nginx prometheus grafana
+#   docker compose ... up -d app worker dashboard nginx prometheus alertmanager grafana
 
 name: recoengine
 
@@ -142,9 +142,49 @@ services:
       - --storage.tsdb.retention.time=15d
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
+
+  # Host metrics (disk, memory, CPU, OOM kills) of the EC2 instance, not of a container.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: always
+    command: ["--path.rootfs=/host"]
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+
+  # With RDS / ElastiCache, point these at those endpoints (or use CloudWatch instead).
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    restart: always
+    environment:
+      DATA_SOURCE_URI: postgres:5432/${POSTGRES_DB}?sslmode=disable
+      DATA_SOURCE_USER: ${POSTGRES_USER}
+      DATA_SOURCE_PASS: ${POSTGRES_PASSWORD}
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    restart: always
+    environment:
+      REDIS_ADDR: redis://redis:6379
+
+  # Sends the alerts in monitoring/alerts.yml to Slack. Needs the webhook URL in
+  # monitoring/secrets/slack_webhook_url (see monitoring/alertmanager.yml).
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: always
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./monitoring/secrets:/etc/alertmanager/secrets:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
 
   grafana:
     image: grafana/grafana:11.3.0
@@ -167,6 +207,7 @@ volumes:
   postgres_backups:
   redis_data:
   prometheus_data:
+  alertmanager_data:
   grafana_data:
   certbot_www:
   letsencrypt:

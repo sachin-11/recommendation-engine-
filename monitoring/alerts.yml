@@ -1,0 +1,208 @@
+# Prometheus alert rules for RecoEngine. Loaded by monitoring/prometheus.yml; Alertmanager
+# (monitoring/alertmanager.yml) sends them to Slack. Thresholds are starting points: tune them
+# once you know your normal traffic. Check with:
+#   docker run --rm -v "$PWD/monitoring:/m" --entrypoint promtool prom/prometheus:v2.55.1 check rules /m/alerts.yml
+
+groups:
+  - name: recoengine-availability
+    rules:
+      - alert: ApiDown
+        expr: up{job="recoengine-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "RecoEngine API is down"
+          description: "Prometheus cannot scrape the API ({{ $labels.instance }}) for 2 minutes."
+
+      - alert: WorkerDown
+        expr: up{job="recoengine-worker"} == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Embedding worker is down"
+          description: "Prometheus cannot scrape the worker for 5 minutes. Uploads left PENDING are not retried."
+
+      - alert: WorkerStalled
+        # Running but not polling: stuck in a call, a deadlock, or a very long chunk.
+        expr: time() - max(worker_last_poll_timestamp_seconds) > 600
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Embedding worker has not polled for {{ $value | humanizeDuration }}"
+          description: "The worker process answers but its loop is not moving. Check `docker compose logs worker`."
+
+      - alert: EmbeddingBacklogStuck
+        # Worker down, or OpenAI/Pinecone failing so items keep going back to PENDING.
+        expr: oldest_pending_item_age_seconds > 1800
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Items have waited {{ $value | humanizeDuration }} to be embedded"
+          description: "The oldest PENDING item is older than 30 minutes. See the External services panels."
+
+  - name: recoengine-errors-and-latency
+    rules:
+      - alert: HighHttpErrorRate
+        # Scrapes and health checks are excluded, so they do not dilute the ratio.
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5..", route!~"/metrics|/health"}[5m]))
+            / sum(rate(http_requests_total{route!~"/metrics|/health"}[5m]))
+          ) > 0.02
+          and sum(rate(http_requests_total{route!~"/metrics|/health"}[5m])) > 0.1
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of API requests fail with 5xx"
+          description: "More than 2% of requests returned 5xx for 5 minutes. Check Sentry and the HTTP panels by route."
+
+      - alert: SlowRecommendations
+        expr: histogram_quantile(0.95, sum by (le) (rate(reco_latency_seconds_bucket[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Recommendation p95 latency is {{ $value | humanizeDuration }}"
+          description: "p95 above 1s for 10 minutes. Compare with the OpenAI and Pinecone latency panels."
+
+      - alert: ExternalServiceFailing
+        # Per attempt, so retried rate limits count. Bad input (client_error) and missing
+        # namespaces (not_found) are the caller's problem, not an outage.
+        expr: |
+          (
+            sum by (service) (rate(external_calls_total{outcome!~"ok|not_found|client_error"}[5m]))
+            / sum by (service) (rate(external_calls_total[5m]))
+          ) > 0.1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value | humanizePercentage }} of calls fail"
+          description: "More than 10% of {{ $labels.service }} calls time out, are rate limited or fail. See the External services panels for the outcome."
+
+  - name: recoengine-cost-and-data
+    rules:
+      - alert: EmbeddingTokenSpike
+        # 20M tokens/hour of text-embedding-3-small is about $0.40/hour, ~$290/month if sustained.
+        expr: sum(increase(openai_embedding_tokens_total[1h])) > 20e6
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanize }} OpenAI embedding tokens in the last hour"
+          description: "Unusual embedding volume: a large import, a re-embed, or a client looping. Check the Analytics page per tenant."
+
+      - alert: FailedItemsRising
+        expr: sum(delta(items_total{status="FAILED"}[30m])) > 100
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanize }} more items FAILED in 30 minutes"
+          description: "Items are being rejected (bad input or text OpenAI refuses). Filter the Items page by FAILED to see the errors."
+
+  # --- The host and the databases (node-exporter, postgres-exporter, redis-exporter) ---
+
+  - name: recoengine-host
+    rules:
+      - alert: DiskSpaceLow
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|squashfs|nsfs|fuse.*", mountpoint!~"/boot.*"}
+          / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|squashfs|nsfs|fuse.*", mountpoint!~"/boot.*"} < 0.15
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} has {{ $value | humanizePercentage }} free"
+          description: "Postgres, Prometheus data, backups and container logs share this disk. Free space with `docker system prune`, or grow the EBS volume."
+
+      - alert: DiskSpaceCritical
+        expr: |
+          node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|squashfs|nsfs|fuse.*", mountpoint!~"/boot.*"}
+          / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|squashfs|nsfs|fuse.*", mountpoint!~"/boot.*"} < 0.05
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} is almost full ({{ $value | humanizePercentage }} free)"
+          description: "Postgres stops accepting writes when the disk is full. Act now: prune images and old logs, or grow the volume."
+
+      - alert: DiskWillFillIn24h
+        # Only when already below 40% free, so a brief burst of writes on an empty disk is ignored.
+        expr: |
+          predict_linear(node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|squashfs|nsfs|fuse.*", mountpoint!~"/boot.*"}[6h], 24 * 3600) < 0
+          and node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.4
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} will be full within 24 hours at the current rate"
+          description: "Look for what is growing: `docker system df`, `du -sh /var/lib/docker/volumes/*`."
+
+      - alert: MemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Only {{ $value | humanizePercentage }} of memory is available"
+          description: "The kernel will start killing processes. `docker stats` shows which container uses it."
+
+      - alert: OutOfMemoryKill
+        expr: increase(node_vmstat_oom_kill[15m]) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "The kernel killed a process for lack of memory"
+          description: "`docker compose ps` shows which container restarted; `dmesg | grep -i oom` names the process."
+
+      - alert: CpuSaturated
+        expr: 1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.9
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "CPU is {{ $value | humanizePercentage }} busy"
+          description: "Sustained for 15 minutes. `docker stats` shows which container; consider a larger instance or more API processes on a bigger one."
+
+  - name: recoengine-databases
+    rules:
+      - alert: MonitoringTargetDown
+        expr: up{job=~"node|postgres|redis|alertmanager"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }}"
+          description: "The exporter container is down, so alerts that depend on it cannot fire. `docker compose ps`."
+
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Postgres is not reachable"
+          description: "Every API request that touches the database fails. `docker compose logs --tail 100 postgres`."
+
+      - alert: PostgresConnectionsHigh
+        expr: sum(pg_stat_activity_count) / max(pg_settings_max_connections) > 0.8
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Postgres is using {{ $value | humanizePercentage }} of its connections"
+          description: "New connections fail at 100%. Each API process and the worker hold a pool; check for leaked sessions or raise max_connections."
+
+      - alert: PostgresLongTransaction
+        # Long transactions hold locks and stop vacuum.
+        expr: max(pg_stat_activity_max_tx_duration{state=~"active|idle in transaction.*"}) > 600
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "A Postgres transaction has been open for {{ $value | humanizeDuration }}"
+          description: "Find it with `SELECT pid, state, now() - xact_start, query FROM pg_stat_activity ORDER BY xact_start;` and cancel it with pg_cancel_backend(pid)."
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Redis is not reachable"
+          description: "Rate limits, caches and sign-in lockout depend on it. `docker compose logs --tail 100 redis`."
+
+      - alert: RedisMemoryHigh
+        # Redis runs with noeviction and no maxmemory: it grows until the host runs out.
+        expr: max(redis_memory_used_bytes) / max(node_memory_MemTotal_bytes) > 0.3
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Redis uses {{ $value | humanizePercentage }} of the host's memory"
+          description: "Mostly the embedding cache. Lower EMBEDDING_CACHE_TTL_SECONDS or set a maxmemory with an eviction policy for cache keys."

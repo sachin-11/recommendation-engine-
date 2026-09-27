@@ -1,0 +1,27 @@
+# Sends Prometheus alerts to Slack. The incoming-webhook URL is read from a file that is not
+# in git:  echo 'https://hooks.slack.com/services/…' > monitoring/secrets/slack_webhook_url
+# Check with:
+#   docker run --rm -v "$PWD/monitoring:/etc/alertmanager" --entrypoint amtool prom/alertmanager:v0.27.0 check-config /etc/alertmanager/alertmanager.yml
+
+route:
+  receiver: slack
+  group_by: [alertname, service]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: slack
+    slack_configs:
+      - api_url_file: /etc/alertmanager/secrets/slack_webhook_url
+        send_resolved: true
+        title: '{{ if eq .Status "firing" }}🔴{{ else }}✅{{ end }} [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})'
+        text: |-
+          {{ range .Alerts }}*{{ .Annotations.summary }}*
+          {{ .Annotations.description }}
+          {{ end }}
+
+# A critical alert already covers its warnings (API down makes latency alerts noise).
+inhibit_rules:
+  - source_matchers: [severity="critical", alertname="ApiDown"]
+    target_matchers: [severity="warning"]

@@ -18,6 +18,7 @@ from pinecone import NotFoundError as PineconeNotFoundError
 from pinecone import Pinecone, ServerlessSpec
 
 from app.core.config import settings
+from app.core.metrics import track_external_call
 from app.core.tracing import traced
 
 logger = logging.getLogger(__name__)
@@ -169,9 +170,10 @@ class PineconeService:
                 for item in chunk
             ]
             try:
-                await asyncio.to_thread(
-                    index.upsert, vectors=vectors, namespace=namespace, show_progress=False
-                )
+                with track_external_call("pinecone", "upsert"):
+                    await asyncio.to_thread(
+                        index.upsert, vectors=vectors, namespace=namespace, show_progress=False
+                    )
                 upserted += len(chunk)
             except Exception:
                 logger.exception("Pinecone upsert failed for %d vectors", len(chunk))
@@ -190,11 +192,12 @@ class PineconeService:
         try:
             index = await self._index()
             for start in range(0, len(pinecone_ids), DELETE_CHUNK_SIZE):
-                await asyncio.to_thread(
-                    index.delete,
-                    ids=pinecone_ids[start : start + DELETE_CHUNK_SIZE],
-                    namespace=namespace,
-                )
+                with track_external_call("pinecone", "delete"):
+                    await asyncio.to_thread(
+                        index.delete,
+                        ids=pinecone_ids[start : start + DELETE_CHUNK_SIZE],
+                        namespace=namespace,
+                    )
             return True
         except (IndexNotFoundError, PineconeNotFoundError):
             return True  # no index or no namespace: nothing to delete
@@ -281,18 +284,20 @@ class PineconeService:
         `{id, score, metadata}` dicts, best first. No index yet means nothing to recommend."""
         timeout = self.query_timeout
         try:
-            async with asyncio.timeout(timeout):
-                index = await self._index()
-                response = await asyncio.to_thread(
-                    index.query,
-                    top_k=top_k,
-                    vector=vector,
-                    id=id,
-                    filter=filter or None,
-                    namespace=namespace_for(tenant_id),
-                    include_metadata=True,
-                    timeout=timeout,
-                )
+            # Outside the timeout block, so a timeout is recorded as one, not as a cancellation.
+            with track_external_call("pinecone", "query"):
+                async with asyncio.timeout(timeout):
+                    index = await self._index()
+                    response = await asyncio.to_thread(
+                        index.query,
+                        top_k=top_k,
+                        vector=vector,
+                        id=id,
+                        filter=filter or None,
+                        namespace=namespace_for(tenant_id),
+                        include_metadata=True,
+                        timeout=timeout,
+                    )
         except (IndexNotFoundError, PineconeNotFoundError):
             return []
         except TimeoutError as exc:  # also PineconeTimeoutError, a TimeoutError subclass

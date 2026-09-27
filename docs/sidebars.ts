@@ -31,6 +31,7 @@ const sidebars: SidebarsConfig = {
     },
     { type: "link", label: "API reference", href: "/api-reference/" },
     "deployment",
+    "monitoring",
   ],
 };
 
