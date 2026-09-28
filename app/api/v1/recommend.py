@@ -30,12 +30,14 @@ from app.services.recommendation.tracking import (
     record_feedback,
     save_recommendation_logs,
 )
+from app.services.workspace_limits import WorkspaceLimitsDep
 
 log = structlog.get_logger(__name__)
 
 CACHE_HEADER = "X-Cache"
 _QUERY_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"model": ErrorResponse, "description": "Invalid filters or query"},
+    403: {"model": ErrorResponse, "description": "Monthly recommendation limit reached"},
     503: {
         "model": ErrorResponse,
         "description": "OpenAI or Pinecone unavailable or timed out (see Retry-After)",
@@ -129,8 +131,13 @@ ResponderDep = Annotated[Responder, Depends()]
     response_model_exclude_none=True,
 )
 async def recommend_by_text(
-    payload: TextRecommendRequest, auth: AuthDep, engine: QueryEngineDep, respond: ResponderDep
+    payload: TextRecommendRequest,
+    auth: AuthDep,
+    engine: QueryEngineDep,
+    respond: ResponderDep,
+    limits: WorkspaceLimitsDep,
 ) -> RecommendResponse:
+    await limits.consume_queries()
     recommendation = await engine.recommend_by_text(
         payload.query, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
     )
@@ -147,8 +154,13 @@ async def recommend_by_text(
     response_model_exclude_none=True,
 )
 async def recommend_by_item(
-    payload: ItemRecommendRequest, auth: AuthDep, engine: QueryEngineDep, respond: ResponderDep
+    payload: ItemRecommendRequest,
+    auth: AuthDep,
+    engine: QueryEngineDep,
+    respond: ResponderDep,
+    limits: WorkspaceLimitsDep,
 ) -> RecommendResponse:
+    await limits.consume_queries()
     recommendation = await engine.recommend_by_item_id(
         payload.external_id, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
     )
@@ -162,8 +174,13 @@ async def recommend_by_item(
     response_model_exclude_none=True,
 )
 async def recommend_by_profile(
-    payload: ProfileRecommendRequest, auth: AuthDep, engine: QueryEngineDep, respond: ResponderDep
+    payload: ProfileRecommendRequest,
+    auth: AuthDep,
+    engine: QueryEngineDep,
+    respond: ResponderDep,
+    limits: WorkspaceLimitsDep,
 ) -> RecommendResponse:
+    await limits.consume_queries()
     recommendation = await engine.recommend_by_profile(
         payload.profile, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
     )
@@ -177,8 +194,13 @@ async def recommend_by_profile(
     response_model_exclude_none=True,
 )
 async def recommend_batch(
-    payload: BatchRecommendRequest, auth: AuthDep, engine: QueryEngineDep, respond: ResponderDep
+    payload: BatchRecommendRequest,
+    auth: AuthDep,
+    engine: QueryEngineDep,
+    respond: ResponderDep,
+    limits: WorkspaceLimitsDep,
 ) -> BatchRecommendResponse:
+    await limits.consume_queries(len(payload.queries))
     queries = [BatchQuery(q.id, q.query, q.filters) for q in payload.queries]
     recommendations = await engine.recommend_batch(queries, auth.tenant, payload.top_k)
     return respond.batch(recommendations)

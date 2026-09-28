@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.v1 import account, analytics, recommend, team
+from app.api.v1 import account, admin, analytics, recommend, team
 from app.api.v1.items import index_router, items_router
 from app.middleware.admin import require_admin
 from app.schemas.common import ERROR_RESPONSES, ErrorResponse
@@ -54,7 +54,7 @@ async def get_tenant(tenant_id: uuid.UUID, service: TenantServiceDep) -> TenantR
     "/{tenant_id}/api-keys",
     status_code=status.HTTP_201_CREATED,
     summary="Generate a new API key (the plain key is returned only once)",
-    responses={403: {"model": ErrorResponse, "description": "Tenant is inactive"}},
+    responses={403: {"model": ErrorResponse, "description": "Workspace is suspended"}},
 )
 async def create_api_key(
     tenant_id: uuid.UUID, payload: ApiKeyCreate, service: TenantServiceDep
@@ -91,3 +91,4 @@ api_router.include_router(account.auth_router)
 api_router.include_router(account.me_router)
 api_router.include_router(team.members_router)
 api_router.include_router(team.invitations_router)
+api_router.include_router(admin.router)

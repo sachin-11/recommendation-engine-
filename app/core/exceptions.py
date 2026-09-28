@@ -35,6 +35,21 @@ class ForbiddenError(AppException):
     error_code = "forbidden"
 
 
+class WorkspaceSuspendedError(ForbiddenError):
+    """The workspace was suspended by a platform admin. The reason stays internal."""
+
+    error_code = "workspace_suspended"
+
+    def __init__(self) -> None:
+        super().__init__("This workspace has been suspended. Contact support to restore access.")
+
+
+class LimitExceededError(ForbiddenError):
+    """A per-workspace limit set by a platform admin (items, monthly queries) is reached."""
+
+    error_code = "limit_exceeded"
+
+
 class NotFoundError(AppException):
     status_code = 404
     error_code = "not_found"

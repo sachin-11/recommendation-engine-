@@ -45,6 +45,11 @@ TAGS: list[dict[str, str]] = [
         "description": "Operator-only tenant management by id. Requires `X-Admin-Key` "
         "(ADMIN_API_KEY); disabled when it is not configured. Tenants use `/auth` and `/me`.",
     },
+    {
+        "name": "Platform admin",
+        "description": "Every workspace, for the people who run RecoEngine: usage, suspension, "
+        "limits. Needs a dashboard session of a platform admin; integration keys are refused.",
+    },
     {"name": "Health", "description": "Liveness of the API and its dependencies."},
 ]
 
@@ -58,6 +63,7 @@ _TAG_NAMES = {
     "analytics": "Analytics",
     "index": "Index",
     "tenants": "Tenants",
+    "admin": "Platform admin",
     "health": "Health",
 }
 
@@ -270,6 +276,39 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
     ("delete", "/api/v1/tenants/{tenant_id}/api-keys/{key_id}"): (
         "revokeTenantApiKey",
         "Operator only: revoke an API key of a tenant, e.g. a leaked one.",
+    ),
+    ("get", "/api/v1/admin/overview"): (
+        "getPlatformOverview",
+        "Platform admin: workspaces (active, suspended, new), users, items, queries today and "
+        "this month, embedding tokens and their estimated cost, daily queries and the busiest "
+        "workspaces.",
+    ),
+    ("get", "/api/v1/admin/workspaces"): (
+        "listWorkspaces",
+        "Platform admin: every workspace with its owner, members, items, queries and tokens "
+        "this month, last activity and limits. Search by name or email, filter by status, "
+        "sort, page.",
+    ),
+    ("get", "/api/v1/admin/workspaces/{tenant_id}"): (
+        "getWorkspace",
+        "Platform admin: one workspace with its members, integration API keys, item status, "
+        "daily queries for 30 days and the suspension note.",
+    ),
+    ("post", "/api/v1/admin/workspaces/{tenant_id}/suspend"): (
+        "suspendWorkspace",
+        "Platform admin: block every request of the workspace (its keys and sessions get 403 "
+        "`workspace_suspended`, sign-in is refused). Nothing is deleted. The reason is an "
+        "internal note. Your own workspace cannot be suspended.",
+    ),
+    ("post", "/api/v1/admin/workspaces/{tenant_id}/activate"): (
+        "activateWorkspace",
+        "Platform admin: lift a suspension; existing keys and sessions work again.",
+    ),
+    ("patch", "/api/v1/admin/workspaces/{tenant_id}/limits"): (
+        "updateWorkspaceLimits",
+        "Platform admin: set `max_items`, `monthly_query_limit` and `rate_limit_rpm`. Only the "
+        "fields sent change; null restores the default. Uploads past `max_items` and queries "
+        "past the monthly limit get 403 `limit_exceeded`.",
     ),
 }
 

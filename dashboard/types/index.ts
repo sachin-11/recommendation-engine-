@@ -24,6 +24,8 @@ export interface User {
   has_password: boolean;
   last_login_at: string | null;
   created_at: string;
+  /** Can open the platform admin area (every workspace). */
+  is_platform_admin: boolean;
 }
 
 /** The workspace (`/me`), plus who is asking. */
@@ -250,4 +252,70 @@ export interface ApiErrorBody {
     message: string;
     details?: { field?: string | null; message: string; type?: string | null }[];
   };
+}
+
+// --- Platform admin (/admin) ---
+
+export type WorkspaceStatus = "active" | "suspended";
+export type WorkspaceSort = "newest" | "name" | "queries" | "tokens" | "items" | "last_active";
+
+export interface WorkspaceLimits {
+  /** Null: no cap. */
+  max_items: number | null;
+  /** Null: no cap. */
+  monthly_query_limit: number | null;
+  /** Null: the platform default. */
+  rate_limit_rpm: number | null;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  email: string;
+  domain_type: DomainType;
+  status: WorkspaceStatus;
+  created_at: string;
+  owner_name: string | null;
+  members: number;
+  items: number;
+  queries_this_month: number;
+  tokens_this_month: number;
+  estimated_cost_this_month_usd: number;
+  last_active_at: string | null;
+  limits: WorkspaceLimits;
+}
+
+export interface WorkspaceList {
+  workspaces: WorkspaceSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface WorkspaceDetail extends WorkspaceSummary {
+  suspended_at: string | null;
+  /** Internal note, never shown to the workspace. */
+  suspended_reason: string | null;
+  email_verified: boolean;
+  embedding_status: Record<EmbeddingStatus, number>;
+  queries_daily: { date: string; count: number }[];
+  tokens_last_30_days: number;
+  member_list: User[];
+  api_keys: ApiKey[];
+}
+
+export interface PlatformOverview {
+  workspaces_total: number;
+  workspaces_active: number;
+  workspaces_suspended: number;
+  workspaces_new_last_30_days: number;
+  users_total: number;
+  items_total: number;
+  queries_today: number;
+  queries_this_month: number;
+  tokens_this_month: number;
+  estimated_cost_this_month_usd: number;
+  queries_daily: { date: string; count: number }[];
+  top_workspaces: { id: string; name: string; queries_this_month: number; tokens_this_month: number }[];
 }

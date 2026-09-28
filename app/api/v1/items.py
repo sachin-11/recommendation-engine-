@@ -31,6 +31,7 @@ from app.services.embedding.dependencies import PipelineDep, VectorStoreDep
 from app.services.embedding.pinecone_service import VectorStoreUnavailableError
 from app.services.embedding.pipeline import EmbeddingPipeline
 from app.services.item_service import PAGE_SIZE, ItemServiceDep
+from app.services.workspace_limits import WorkspaceLimitsDep
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,7 @@ async def upload_items(
     service: ItemServiceDep,
     pipeline: PipelineDep,
     limiter: RateLimiterDep,
+    limits: WorkspaceLimitsDep,
     background_tasks: BackgroundTasks,
     response: Response,
 ) -> SyncUploadResponse | AsyncUploadResponse:
@@ -100,6 +102,7 @@ async def upload_items(
             f"async=false supports at most {settings.MAX_SYNC_ITEMS} items; "
             f"use async=true for {len(items)}"
         )
+    await limits.ensure_item_capacity([item["external_id"] for item in items])
     await limiter.consume_items(auth.tenant.id, len(items), daily_item_limit(auth.tenant))
 
     if payload.run_async:
@@ -133,6 +136,7 @@ async def upload_items_csv(
     service: ItemServiceDep,
     pipeline: PipelineDep,
     limiter: RateLimiterDep,
+    limits: WorkspaceLimitsDep,
     background_tasks: BackgroundTasks,
     file: Annotated[UploadFile, File(description="UTF-8 CSV with a header row")],
 ) -> CsvUploadResponse:
@@ -140,6 +144,7 @@ async def upload_items_csv(
     if len(content) > settings.MAX_CSV_BYTES:
         raise BadRequestError(f"CSV is larger than {settings.MAX_CSV_BYTES // (1024 * 1024)} MB")
     parsed = parse_items_csv(content, auth.tenant.domain_config)
+    await limits.ensure_item_capacity([item["external_id"] for item in parsed.items])
     await limiter.consume_items(auth.tenant.id, len(parsed.items), daily_item_limit(auth.tenant))
 
     batch = await service.ingest_async(parsed.items)

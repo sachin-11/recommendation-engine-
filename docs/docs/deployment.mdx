@@ -55,6 +55,10 @@ The script builds both images, pushes them to ECR, then on the server pulls them
 2. `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm certbot certonly --webroot -w /var/www/certbot -d your.domain --email you@your.domain --agree-tos`
 3. Uncomment the `443` server in `nginx/nginx.conf`, set `server_name`, add the HTTP→HTTPS redirect, then `docker compose ... exec nginx nginx -s reload`.
 
+## Platform admin
+
+Make yourself a platform admin to manage every workspace from the dashboard (usage, suspension, limits): sign up, then run `docker compose -f docker-compose.prod.yml exec app python scripts/platform_admin.py grant you@yourcompany.com`. See [Platform admin](./platform-admin.mdx).
+
 ## Monitoring
 
 - `GET /metrics` (blocked at nginx; scraped internally) exposes HTTP, recommendation, OpenAI/Pinecone and embedding-backlog metrics. The worker exposes its own on port 9100.

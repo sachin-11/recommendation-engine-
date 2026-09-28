@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Boolean, DateTime, String, true
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, true
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -43,6 +43,16 @@ class Tenant(BaseEntity):
         DateTime(timezone=True), nullable=True
     )
 
+    # Set by a platform admin together with is_active=False; cleared on reactivation.
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspended_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Per-workspace limits set by a platform admin. Null means the platform default applies
+    # (no cap for items and monthly queries, RATE_LIMIT_RPM for requests).
+    max_items: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    monthly_query_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rate_limit_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     api_keys: Mapped[list["ApiKey"]] = relationship(
         back_populates="tenant",
         cascade="all, delete-orphan",
@@ -53,6 +63,10 @@ class Tenant(BaseEntity):
     @property
     def email_verified(self) -> bool:
         return self.email_verified_at is not None
+
+    @property
+    def is_suspended(self) -> bool:
+        return self.suspended_at is not None
 
     def __repr__(self) -> str:
         return f"<Tenant id={self.id} email={self.email!r}>"

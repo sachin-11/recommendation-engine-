@@ -9,11 +9,13 @@ import {
   KeyRound,
   LayoutDashboard,
   Settings,
+  ShieldCheck,
   Sparkles,
   Users,
 } from "lucide-react";
 
 import { Logo } from "@/components/layout/Logo";
+import { useMe } from "@/lib/hooks/account";
 import { cn, DOCS_URL } from "@/lib/utils";
 
 export const NAV = [
@@ -26,15 +28,20 @@ export const NAV = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
+// Shown only to platform admins; the API refuses everyone else anyway.
+const ADMIN_NAV = { href: "/dashboard/admin", label: "Platform admin", icon: ShieldCheck };
+
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { data: me } = useMe();
+  const links = me?.user?.is_platform_admin ? [...NAV, ADMIN_NAV] : NAV;
   return (
     <div className="flex h-full flex-col gap-6 p-4">
       <Link href="/dashboard" onClick={onNavigate} className="px-2">
         <Logo />
       </Link>
       <nav className="flex flex-1 flex-col gap-1" aria-label="Main">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {links.map(({ href, label, icon: Icon }) => {
           const active = href === "/dashboard" ? pathname === href : pathname.startsWith(href);
           return (
             <Link

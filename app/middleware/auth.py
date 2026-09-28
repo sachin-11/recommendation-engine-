@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.exceptions import ForbiddenError, UnauthorizedError
+from app.core.exceptions import ForbiddenError, UnauthorizedError, WorkspaceSuspendedError
 from app.core.security import hash_api_key
 from app.models.api_key import ApiKey
 from app.models.base import utcnow
@@ -84,7 +84,7 @@ async def authenticate(
     if api_key.expires_at is not None and _as_utc(api_key.expires_at) <= now:
         raise UnauthorizedError("API key has expired", headers={"WWW-Authenticate": API_KEY_HEADER})
     if not tenant.is_active:
-        raise ForbiddenError("Tenant is inactive")
+        raise WorkspaceSuspendedError()
 
     user: User | None = None
     role = INTEGRATION_KEY_ROLE
@@ -120,3 +120,14 @@ def require_role(minimum: Role) -> Any:
         return auth
 
     return Depends(check)
+
+
+async def require_platform_admin(auth: AuthDep) -> User:
+    """The signed-in platform admin. Integration keys never qualify, even the admin's own:
+    a leaked integration key must not reach every workspace."""
+    if auth.user is None or not auth.user.is_platform_admin:
+        raise ForbiddenError("This needs a platform admin signed in to the dashboard.")
+    return auth.user
+
+
+PlatformAdminDep = Annotated[User, Depends(require_platform_admin)]

@@ -328,7 +328,7 @@
             }
           },
           "403": {
-            "description": "Tenant is inactive",
+            "description": "Workspace is suspended",
             "content": {
               "application/json": {
                 "schema": {
@@ -1704,6 +1704,16 @@
               }
             }
           },
+          "403": {
+            "description": "Monthly recommendation limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "503": {
             "description": "OpenAI or Pinecone unavailable or timed out (see Retry-After)",
             "content": {
@@ -1803,6 +1813,16 @@
           },
           "400": {
             "description": "Invalid filters or query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Monthly recommendation limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -1972,6 +1992,16 @@
               }
             }
           },
+          "403": {
+            "description": "Monthly recommendation limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "503": {
             "description": "OpenAI or Pinecone unavailable or timed out (see Retry-After)",
             "content": {
@@ -2071,6 +2101,16 @@
           },
           "400": {
             "description": "Invalid filters or query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Monthly recommendation limit reached",
             "content": {
               "application/json": {
                 "schema": {
@@ -4199,6 +4239,615 @@
         },
         "description": "Public: accept an invitation with your name and a password. Creates your user with a verified email and returns a session like /auth/login."
       }
+    },
+    "/api/v1/admin/overview": {
+      "get": {
+        "tags": [
+          "Platform admin"
+        ],
+        "summary": "Platform totals",
+        "operationId": "getPlatformOverview",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformOverview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Platform admin: workspaces (active, suspended, new), users, items, queries today and this month, embedding tokens and their estimated cost, daily queries and the busiest workspaces."
+      }
+    },
+    "/api/v1/admin/workspaces": {
+      "get": {
+        "tags": [
+          "Platform admin"
+        ],
+        "summary": "Every workspace, with usage",
+        "operationId": "listWorkspaces",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Name or email",
+              "title": "Search"
+            },
+            "description": "Name or email"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkspaceStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/WorkspaceSort",
+              "default": "newest"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Platform admin: every workspace with its owner, members, items, queries and tokens this month, last activity and limits. Search by name or email, filter by status, sort, page."
+      }
+    },
+    "/api/v1/admin/workspaces/{tenant_id}": {
+      "get": {
+        "tags": [
+          "Platform admin"
+        ],
+        "summary": "One workspace in detail",
+        "operationId": "getWorkspace",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Platform admin: one workspace with its members, integration API keys, item status, daily queries for 30 days and the suspension note."
+      }
+    },
+    "/api/v1/admin/workspaces/{tenant_id}/suspend": {
+      "post": {
+        "tags": [
+          "Platform admin"
+        ],
+        "summary": "Suspend a workspace",
+        "operationId": "suspendWorkspace",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuspendRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Your own workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Platform admin: block every request of the workspace (its keys and sessions get 403 `workspace_suspended`, sign-in is refused). Nothing is deleted. The reason is an internal note. Your own workspace cannot be suspended."
+      }
+    },
+    "/api/v1/admin/workspaces/{tenant_id}/activate": {
+      "post": {
+        "tags": [
+          "Platform admin"
+        ],
+        "summary": "Reactivate a workspace",
+        "operationId": "activateWorkspace",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Platform admin: lift a suspension; existing keys and sessions work again."
+      }
+    },
+    "/api/v1/admin/workspaces/{tenant_id}/limits": {
+      "patch": {
+        "tags": [
+          "Platform admin"
+        ],
+        "summary": "Set limits",
+        "operationId": "updateWorkspaceLimits",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LimitsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Platform admin: set `max_items`, `monthly_query_limit` and `rate_limit_rpm`. Only the fields sent change; null restores the default. Uploads past `max_items` and queries past the monthly limit get 403 `limit_exceeded`."
+      }
     }
   },
   "components": {
@@ -4911,6 +5560,24 @@
           "progress_percentage"
         ],
         "title": "CsvUploadResponse"
+      },
+      "DailyCount": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "count"
+        ],
+        "title": "DailyCount"
       },
       "DailyTokens": {
         "properties": {
@@ -5802,6 +6469,53 @@
         ],
         "title": "ItemUploadRequest"
       },
+      "LimitsUpdate": {
+        "properties": {
+          "max_items": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Items"
+          },
+          "monthly_query_limit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Query Limit"
+          },
+          "rate_limit_rpm": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Limit Rpm"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LimitsUpdate",
+        "description": "Only the fields sent are changed; send null to go back to the default."
+      },
       "LoginRequest": {
         "properties": {
           "email": {
@@ -5938,6 +6652,82 @@
           "message"
         ],
         "title": "MessageResponse"
+      },
+      "PlatformOverview": {
+        "properties": {
+          "workspaces_total": {
+            "type": "integer",
+            "title": "Workspaces Total"
+          },
+          "workspaces_active": {
+            "type": "integer",
+            "title": "Workspaces Active"
+          },
+          "workspaces_suspended": {
+            "type": "integer",
+            "title": "Workspaces Suspended"
+          },
+          "workspaces_new_last_30_days": {
+            "type": "integer",
+            "title": "Workspaces New Last 30 Days"
+          },
+          "users_total": {
+            "type": "integer",
+            "title": "Users Total"
+          },
+          "items_total": {
+            "type": "integer",
+            "title": "Items Total"
+          },
+          "queries_today": {
+            "type": "integer",
+            "title": "Queries Today"
+          },
+          "queries_this_month": {
+            "type": "integer",
+            "title": "Queries This Month"
+          },
+          "tokens_this_month": {
+            "type": "integer",
+            "title": "Tokens This Month"
+          },
+          "estimated_cost_this_month_usd": {
+            "type": "number",
+            "title": "Estimated Cost This Month Usd"
+          },
+          "queries_daily": {
+            "items": {
+              "$ref": "#/components/schemas/DailyCount"
+            },
+            "type": "array",
+            "title": "Queries Daily",
+            "description": "All workspaces, last 30 UTC days."
+          },
+          "top_workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/TopWorkspace"
+            },
+            "type": "array",
+            "title": "Top Workspaces",
+            "description": "By queries this month."
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspaces_total",
+          "workspaces_active",
+          "workspaces_suspended",
+          "workspaces_new_last_30_days",
+          "users_total",
+          "items_total",
+          "queries_today",
+          "queries_this_month",
+          "tokens_this_month",
+          "estimated_cost_this_month_usd",
+          "queries_daily",
+          "top_workspaces"
+        ],
+        "title": "PlatformOverview"
       },
       "ProfileRecommendRequest": {
         "properties": {
@@ -6220,6 +7010,23 @@
         ],
         "title": "RoleUpdate"
       },
+      "SuspendRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Why, for other admins (e.g. 'Invoice 42 unpaid'). Not shown to the workspace."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "SuspendRequest"
+      },
       "SyncUploadResponse": {
         "properties": {
           "mode": {
@@ -6489,6 +7296,35 @@
         ],
         "title": "TokenUsageResponse"
       },
+      "TopWorkspace": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "queries_this_month": {
+            "type": "integer",
+            "title": "Queries This Month"
+          },
+          "tokens_this_month": {
+            "type": "integer",
+            "title": "Tokens This Month"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "queries_this_month",
+          "tokens_this_month"
+        ],
+        "title": "TopWorkspace"
+      },
       "TransferOwnershipRequest": {
         "properties": {
           "user_id": {
@@ -6627,6 +7463,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At"
+          },
+          "is_platform_admin": {
+            "type": "boolean",
+            "title": "Is Platform Admin",
+            "description": "Can open the platform admin area (all workspaces).",
+            "default": false
           }
         },
         "type": "object",
@@ -6698,6 +7540,367 @@
           "token"
         ],
         "title": "VerifyEmailRequest"
+      },
+      "WorkspaceDetail": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "domain_type": {
+            "$ref": "#/components/schemas/DomainType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkspaceStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "items": {
+            "type": "integer",
+            "title": "Items"
+          },
+          "queries_this_month": {
+            "type": "integer",
+            "title": "Queries This Month"
+          },
+          "tokens_this_month": {
+            "type": "integer",
+            "title": "Tokens This Month"
+          },
+          "estimated_cost_this_month_usd": {
+            "type": "number",
+            "title": "Estimated Cost This Month Usd"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At",
+            "description": "Most recent use of any of its API keys."
+          },
+          "limits": {
+            "$ref": "#/components/schemas/WorkspaceLimitsOut"
+          },
+          "suspended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suspended At"
+          },
+          "suspended_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suspended Reason",
+            "description": "Internal note; not shown to the workspace."
+          },
+          "email_verified": {
+            "type": "boolean",
+            "title": "Email Verified"
+          },
+          "embedding_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/EmbeddingStatus"
+            },
+            "type": "object",
+            "title": "Embedding Status"
+          },
+          "queries_daily": {
+            "items": {
+              "$ref": "#/components/schemas/DailyCount"
+            },
+            "type": "array",
+            "title": "Queries Daily",
+            "description": "Last 30 UTC days, oldest first."
+          },
+          "tokens_last_30_days": {
+            "type": "integer",
+            "title": "Tokens Last 30 Days"
+          },
+          "member_list": {
+            "items": {
+              "$ref": "#/components/schemas/UserResponse"
+            },
+            "type": "array",
+            "title": "Member List"
+          },
+          "api_keys": {
+            "items": {
+              "$ref": "#/components/schemas/ApiKeyResponse"
+            },
+            "type": "array",
+            "title": "Api Keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email",
+          "domain_type",
+          "status",
+          "created_at",
+          "owner_name",
+          "members",
+          "items",
+          "queries_this_month",
+          "tokens_this_month",
+          "estimated_cost_this_month_usd",
+          "last_active_at",
+          "limits",
+          "suspended_at",
+          "suspended_reason",
+          "email_verified",
+          "embedding_status",
+          "queries_daily",
+          "tokens_last_30_days",
+          "member_list",
+          "api_keys"
+        ],
+        "title": "WorkspaceDetail"
+      },
+      "WorkspaceLimitsOut": {
+        "properties": {
+          "max_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Items",
+            "description": "Null: no cap."
+          },
+          "monthly_query_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Query Limit",
+            "description": "Null: no cap."
+          },
+          "rate_limit_rpm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate Limit Rpm",
+            "description": "Null: the platform default (RATE_LIMIT_RPM)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "max_items",
+          "monthly_query_limit",
+          "rate_limit_rpm"
+        ],
+        "title": "WorkspaceLimitsOut"
+      },
+      "WorkspaceList": {
+        "properties": {
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceSummary"
+            },
+            "type": "array",
+            "title": "Workspaces"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          },
+          "pages": {
+            "type": "integer",
+            "title": "Pages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspaces",
+          "total",
+          "page",
+          "page_size",
+          "pages"
+        ],
+        "title": "WorkspaceList"
+      },
+      "WorkspaceSort": {
+        "type": "string",
+        "enum": [
+          "newest",
+          "name",
+          "queries",
+          "tokens",
+          "items",
+          "last_active"
+        ],
+        "title": "WorkspaceSort"
+      },
+      "WorkspaceStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended"
+        ],
+        "title": "WorkspaceStatus"
+      },
+      "WorkspaceSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "domain_type": {
+            "$ref": "#/components/schemas/DomainType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkspaceStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Name"
+          },
+          "members": {
+            "type": "integer",
+            "title": "Members"
+          },
+          "items": {
+            "type": "integer",
+            "title": "Items"
+          },
+          "queries_this_month": {
+            "type": "integer",
+            "title": "Queries This Month"
+          },
+          "tokens_this_month": {
+            "type": "integer",
+            "title": "Tokens This Month"
+          },
+          "estimated_cost_this_month_usd": {
+            "type": "number",
+            "title": "Estimated Cost This Month Usd"
+          },
+          "last_active_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Active At",
+            "description": "Most recent use of any of its API keys."
+          },
+          "limits": {
+            "$ref": "#/components/schemas/WorkspaceLimitsOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email",
+          "domain_type",
+          "status",
+          "created_at",
+          "owner_name",
+          "members",
+          "items",
+          "queries_this_month",
+          "tokens_this_month",
+          "estimated_cost_this_month_usd",
+          "last_active_at",
+          "limits"
+        ],
+        "title": "WorkspaceSummary"
       }
     },
     "securitySchemes": {
@@ -6747,6 +7950,10 @@
     {
       "name": "Tenants",
       "description": "Operator-only tenant management by id. Requires `X-Admin-Key` (ADMIN_API_KEY); disabled when it is not configured. Tenants use `/auth` and `/me`."
+    },
+    {
+      "name": "Platform admin",
+      "description": "Every workspace, for the people who run RecoEngine: usage, suspension, limits. Needs a dashboard session of a platform admin; integration keys are refused."
     },
     {
       "name": "Health",

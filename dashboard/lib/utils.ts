@@ -34,6 +34,16 @@ export function formatNumber(value: number | null | undefined): string {
   return new Intl.NumberFormat().format(value);
 }
 
+/** US dollars; small amounts (embedding costs are often cents) keep up to 4 decimals. */
+export function formatCost(usd: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: usd > 0 && usd < 1 ? 4 : 2,
+  }).format(usd);
+}
+
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "RecoEngine";
 // An empty value means "same origin" (the API behind the same reverse proxy as the dashboard).
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(

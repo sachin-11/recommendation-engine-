@@ -1,0 +1,75 @@
+---
+sidebar_position: 12
+title: Platform admin
+description: Manage every workspace as the operator of RecoEngine - usage, suspension and limits.
+---
+
+# Platform admin
+
+Platform admins are the people who run RecoEngine itself. In the dashboard they get a **Platform admin** page that lists every workspace on the platform, with its usage and cost, and lets them suspend a workspace or set its limits.
+
+Platform admin is not a workspace role. An Owner of a workspace can only see their own workspace.
+
+## Grant access
+
+Access is granted from the server only. There is no API or button for it, so nobody can make themselves an admin.
+
+1. Sign up in the dashboard like any user. This gives the admin a workspace of their own.
+2. On the server:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml exec app python scripts/platform_admin.py grant you@yourcompany.com
+   ```
+
+3. Reload the dashboard. **Platform admin** appears in the sidebar.
+
+`scripts/platform_admin.py list` shows every platform admin, and `revoke <email>` removes the access. Both take effect on the next request, including for sessions that are already open.
+
+The admin API accepts only a dashboard session of a platform admin. Integration API keys are refused, even keys of the admin's own workspace, so a leaked integration key can never reach other workspaces.
+
+## What you see
+
+- **Overview:** workspaces (active, suspended, new in 30 days), users, items, recommendations today and this month, OpenAI embedding tokens and their estimated cost, daily recommendations across the platform, and the busiest workspaces.
+- **Workspaces:** every workspace with its owner, members, items, recommendations and cost this month, and when it was last active. You can search by name or email, filter by status, and sort by newest, recent activity, queries, tokens, items or name.
+- **One workspace:** its daily recommendations for 30 days, members and their last sign-in, integration API keys and when each was last used, items by embedding status, and its limits.
+
+Cost is estimated from `EMBEDDING_PRICE_PER_MILLION_TOKENS`, the same way as on the Analytics page.
+
+## Suspend a workspace
+
+**Suspend** asks for a reason. The reason is an internal note for other admins, for example "Invoice 42 unpaid". From that moment:
+
+- every API key and dashboard session of the workspace gets `403` with the error code `workspace_suspended`,
+- its members cannot sign in, and the dashboard signs them out with a "workspace suspended" message,
+- nothing is deleted: items, vectors, keys and members stay as they are.
+
+The workspace only sees that it is suspended, never the reason. **Reactivate** restores access at once, and existing keys and sessions work again. You cannot suspend your own workspace.
+
+## Limits
+
+Each workspace can have its own limits. A blank limit means the default.
+
+| Limit | Default | When it is reached |
+|---|---|---|
+| Max items | No cap | An upload that would take the workspace past the limit is refused with `403 limit_exceeded`. Re-uploading items that already exist replaces them, so they do not count. |
+| Recommendations per month | No cap | Queries get `403 limit_exceeded` until the 1st of the next month (UTC). A batch counts one per query, and a batch that would exceed the limit is refused as a whole. |
+| Requests per minute, per key | `RATE_LIMIT_RPM` (100) | Requests get `429` with `Retry-After`, as with the default limit. |
+
+The daily ingestion limit (`DAILY_ITEM_LIMIT`) still applies on top of these limits.
+
+Limits apply to the next request. The monthly count starts from the recommendations already served this month, so a limit set on the 20th includes the first 19 days. The count is kept in Redis. If Redis is unreachable, queries are allowed rather than refused, the same as for rate limits.
+
+## API
+
+The dashboard calls these endpoints. All of them need a platform admin session in `X-API-Key`:
+
+| Endpoint | |
+|---|---|
+| `GET /api/v1/admin/overview` | Platform totals |
+| `GET /api/v1/admin/workspaces?search=&status=&sort=&page=&page_size=` | Workspace list |
+| `GET /api/v1/admin/workspaces/{id}` | One workspace |
+| `POST /api/v1/admin/workspaces/{id}/suspend` `{"reason": "…"}` | Suspend |
+| `POST /api/v1/admin/workspaces/{id}/activate` | Reactivate |
+| `PATCH /api/v1/admin/workspaces/{id}/limits` `{"max_items": 5000}` | Set limits. Only the fields you send change, and `null` restores the default. |
+
+Scripts that hold the `ADMIN_API_KEY` keep using `/api/v1/tenants`. See the API reference.

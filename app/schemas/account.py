@@ -70,6 +70,9 @@ class UserResponse(BaseModel):
     has_password: bool
     last_login_at: datetime | None
     created_at: datetime
+    is_platform_admin: bool = Field(
+        default=False, description="Can open the platform admin area (all workspaces)."
+    )
 
 
 class MeResponse(TenantResponse):

@@ -22,6 +22,7 @@ from app.core.exceptions import (
     ForbiddenError,
     ServiceUnavailableError,
     UnauthorizedError,
+    WorkspaceSuspendedError,
 )
 from app.core.passwords import hash_password, verify_password
 from app.core.security import generate_api_key
@@ -77,7 +78,7 @@ class AccountService:
             raise UnauthorizedError("Invalid email or password")
         tenant = await self._session.get(Tenant, user.tenant_id)
         if tenant is None or not tenant.is_active:
-            raise ForbiddenError("Tenant is inactive")
+            raise WorkspaceSuspendedError()
         if not user.is_active:
             raise ForbiddenError("This user has been deactivated")
         return await self.start_session(tenant, user)

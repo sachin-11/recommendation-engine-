@@ -36,7 +36,17 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const url = error.config?.url ?? "";
     const isAuthPath = AUTH_PATHS.some((path) => url.endsWith(path));
-    if (status === 401 && !isAuthPath) {
+    if (status === 403 && error.response?.data?.error?.code === "workspace_suspended" && !isAuthPath) {
+      // Every request of a suspended workspace fails the same way: sign out and explain.
+      clearApiKey();
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        toast.error("This workspace has been suspended.", {
+          id: "suspended",
+          description: "Contact support to restore access.",
+        });
+        window.location.assign("/login");
+      }
+    } else if (status === 401 && !isAuthPath) {
       clearApiKey();
       if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
         toast.error("Your session has ended. Please sign in again.", { id: "session" });
@@ -84,6 +94,7 @@ export function toastApiError(error: unknown, title = "Request failed"): void {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     if (status === 401 || status === 429 || status === 503 || !error.response) return;
+    if (error.response.data?.error?.code === "workspace_suspended") return;
   }
   toast.error(title, { description: apiErrorMessage(error) });
 }

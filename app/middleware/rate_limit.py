@@ -126,4 +126,5 @@ RateLimiterDep = Annotated[RateLimiter, Depends(get_rate_limiter)]
 
 
 async def enforce_request_rate(auth: AuthDep, limiter: RateLimiterDep) -> None:
-    await limiter.hit_request(auth.api_key.id)
+    # A platform admin can raise or lower the limit per workspace.
+    await limiter.hit_request(auth.api_key.id, auth.tenant.rate_limit_rpm)

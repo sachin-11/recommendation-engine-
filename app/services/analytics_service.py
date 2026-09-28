@@ -56,7 +56,7 @@ class AnalyticsService:
             "top_recommended_items": await self._top(
                 logs.top_result_external_id, logs.top_result_external_id.is_not(None), month
             ),
-            "embedding_status_breakdown": await self._embedding_status(),
+            "embedding_status_breakdown": await self.embedding_status(),
             "period": {"today_since": today, "month_since": month},
         }
 
@@ -196,7 +196,7 @@ class AnalyticsService:
         )
         return [{"external_id": external_id, "count": n} for external_id, n in rows.tuples()]
 
-    async def _embedding_status(self) -> dict[EmbeddingStatus, int]:
+    async def embedding_status(self) -> dict[EmbeddingStatus, int]:
         rows = await self._session.execute(
             select(Item.embedding_status, func.count())
             .where(Item.tenant_id == self._tenant.id)
