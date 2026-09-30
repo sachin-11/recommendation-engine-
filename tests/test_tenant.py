@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.security import API_KEY_PREFIX, hash_api_key
 from app.models import ApiKey
-from app.schemas.tenant import API_KEY_WARNING
+from app.schemas.tenant import API_KEY_WARNING, RankingConfig
 from tests.conftest import ADMIN_HEADERS
 
 TENANTS = "/api/v1/tenants"
@@ -57,7 +57,7 @@ async def test_create_tenant_happy_path(client: AsyncClient) -> None:
     assert body["name"] == "Acme Hiring"
     assert body["email"] == "ops@acme.example"
     assert body["domain_type"] == "HR"
-    assert body["domain_config"] == HR_CONFIG
+    assert body["domain_config"] == {**HR_CONFIG, "ranking": RankingConfig().model_dump()}
     assert body["is_active"] is True
     assert body["created_at"] and body["updated_at"]
 

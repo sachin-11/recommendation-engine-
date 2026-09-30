@@ -64,12 +64,27 @@ export const apiKeyLoginSchema = z.object({
 });
 export type ApiKeyLoginValues = z.infer<typeof apiKeyLoginSchema>;
 
+const weight = z.number().min(0, "Must be 0 or more").max(5, "Must be 5 or less");
+
+/** How feedback reorders results. Optional: the API fills in defaults when it is left out. */
+export const rankingConfigSchema = z
+  .object({
+    enabled: z.boolean(),
+    engagement: weight,
+    conversion: weight,
+    negative: weight,
+    popularity: weight,
+  })
+  .partial()
+  .strict();
+
 export const domainConfigSchema = z
   .object({
     primary_embedding_field: fieldName,
     searchable_fields: z.array(fieldName).min(1, "Add at least one searchable field").max(50),
     filter_fields: z.array(fieldName).max(50),
     item_label: z.string().trim().min(1, "Item label is required").max(50),
+    ranking: rankingConfigSchema.optional(),
   })
   .strict()
   .superRefine((config, ctx) => {

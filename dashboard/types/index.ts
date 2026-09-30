@@ -8,11 +8,22 @@ export type FeedbackType = "CLICK" | "THUMBS_UP" | "THUMBS_DOWN" | "PURCHASE" | 
 export type CacheStatus = "HIT" | "MISS" | "BYPASS" | "PARTIAL";
 export type Role = "VIEWER" | "DEVELOPER" | "ADMIN" | "OWNER";
 
+/** Weights (0–5) for how feedback reorders results; similarity counts 1. */
+export interface RankingConfig {
+  enabled?: boolean;
+  engagement?: number;
+  conversion?: number;
+  negative?: number;
+  popularity?: number;
+}
+
 export interface DomainConfig {
   primary_embedding_field: string;
   searchable_fields: string[];
   filter_fields: string[];
   item_label: string;
+  /** Always present in API responses; optional when sending (defaults apply). */
+  ranking?: RankingConfig;
 }
 
 export interface User {

@@ -256,7 +256,7 @@ Example response (scores differ with your data):
 }
 ```
 
-`score` is cosine similarity; rank by it. `score_label` buckets it: above 0.65 **Excellent**, above 0.50 **Good**, above 0.35 **Fair**, otherwise **Weak** (calibrated on `text-embedding-3-small`, where short queries score about 0.45–0.75 for relevant items). Identical queries are cached for 5 minutes (`X-Cache: HIT`).
+`score` is cosine similarity. Results come in `rank` order, which is similarity adjusted by feedback: items people click, buy or apply to more than your average move up, and items they dismiss move down (see [Send feedback](#5-send-feedback)). So a result can outrank one with a higher `score`. Items with no feedback yet keep their similarity order. `score_label` buckets it: above 0.65 **Excellent**, above 0.50 **Good**, above 0.35 **Fair**, otherwise **Weak** (calibrated on `text-embedding-3-small`, where short queries score about 0.45–0.75 for relevant items). Identical queries are cached for 5 minutes (`X-Cache: HIT`).
 
 ## 5. Send feedback
 
@@ -302,6 +302,22 @@ curl -X POST $RECO_API/api/v1/recommend/by-text   -H "X-API-Key: $RECO_API_KEY" 
 In the SDKs it is `userId` (JavaScript) and `user_id` (Python) on every recommend call, batch included.
 
 Every result a query returns is recorded as shown to that user, at its rank, cached responses included. Feedback over those impressions is each item's click-through rate.
+
+### How feedback changes ranking
+
+Every few minutes, each item's feedback from the last 30 days is added up per impression, with recent days counting more. At query time the best candidates by similarity are re-ordered by how far each item's rates are above or below your workspace average. An item shown only a few times moves very little. Tune the weights (0–5 each; similarity counts 1) in the `ranking` section of your domain config:
+
+```json
+"ranking": {
+  "enabled": true,
+  "engagement": 0.5,
+  "conversion": 0.5,
+  "negative": 0.5,
+  "popularity": 0.0
+}
+```
+
+`engagement` is clicks and thumbs up, `conversion` is purchases and applies, `negative` is thumbs down and ignores, and `popularity` favours items shown often. Set `enabled` to `false` to order by similarity alone. Saving a domain config without a `ranking` section resets these weights to the defaults above.
 
 ## What's next
 

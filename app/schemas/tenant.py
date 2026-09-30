@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from pydantic import (
     AwareDatetime,
@@ -32,6 +32,31 @@ def _ensure_unique(values: list[str], field: str) -> list[str]:
     return values
 
 
+Weight = Annotated[float, Field(ge=0, le=5)]
+
+
+class RankingConfig(BaseModel):
+    """How much user feedback reorders vector-search results. Each weight scales how far
+    an item's rate is above or below the workspace average; similarity counts 1."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default=True, description="False orders results by similarity alone, as before."
+    )
+    engagement: Weight = Field(default=0.5, description="Clicks and thumbs up per impression.")
+    conversion: Weight = Field(default=0.5, description="Purchases and applies per impression.")
+    negative: Weight = Field(default=0.5, description="Thumbs down and ignores per impression.")
+    popularity: Weight = Field(
+        default=0.0, description="How often the item is shown. Favours established items."
+    )
+
+
+def ranking_config(domain_config: dict[str, Any]) -> RankingConfig:
+    """The workspace's ranking settings; defaults for configs saved before they existed."""
+    return RankingConfig.model_validate(domain_config.get("ranking") or {})
+
+
 class DomainConfig(BaseModel):
     """Describes a tenant's item schema. This is what makes the engine domain-agnostic."""
 
@@ -51,6 +76,7 @@ class DomainConfig(BaseModel):
     searchable_fields: list[FieldName] = Field(min_length=1, max_length=50)
     filter_fields: list[FieldName] = Field(default_factory=list, max_length=50)
     item_label: Annotated[NonBlankStr, StringConstraints(max_length=50)]
+    ranking: RankingConfig = Field(default_factory=RankingConfig)
 
     @field_validator("searchable_fields")
     @classmethod

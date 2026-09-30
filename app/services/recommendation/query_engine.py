@@ -2,7 +2,8 @@
 
 Every query follows the same path: validate filters -> check the result cache -> get a
 query vector (embed text, or reuse the item's stored vector) -> Pinecone similarity
-search -> rank and format. Upstream failures become 503s; nothing partial is returned.
+search -> re-rank by feedback (see reranker.py) -> format. Upstream failures become
+503s; nothing partial is returned.
 """
 
 import asyncio
@@ -24,9 +25,10 @@ from app.core.exceptions import (
 from app.core.tracing import clip, traced
 from app.core.usage import track_embedding_usage
 from app.models.item import EmbeddingStatus, Item
-from app.models.recommendation_log import QueryType
+from app.models.recommendation_log import QueryType, RankingVariant
 from app.models.tenant import Tenant
 from app.models.token_usage import UsageSource
+from app.schemas.tenant import RankingConfig, ranking_config
 from app.services.embedding.openai_embedder import (
     EmbeddingInputError,
     EmbeddingUnavailableError,
@@ -42,6 +44,7 @@ from app.services.embedding.pinecone_service import (
 from app.services.embedding.text_builder import TextBuilder
 from app.services.recommendation.cache import RecommendationCache
 from app.services.recommendation.filter_builder import FilterBuilder
+from app.services.recommendation.reranker import Reranker, candidate_count, workspace_stats
 from app.services.recommendation.result_formatter import ResultFormatter
 from app.services.token_usage import record_embedding_usage
 
@@ -62,6 +65,7 @@ class Recommendation:
     cache_status: CacheStatus
     # OpenAI tokens spent embedding this query (0 on cache hits and by-item queries).
     embedding_tokens: int = 0
+    ranking_variant: RankingVariant = RankingVariant.CONTROL
 
 
 @dataclass
@@ -102,6 +106,10 @@ def _upstream_errors() -> Iterator[None]:
         raise BadRequestError(f"The query text was rejected by the embedding model: {exc}") from exc
 
 
+def _variant(config: RankingConfig) -> RankingVariant:
+    return RankingVariant.RERANKED if config.enabled else RankingVariant.CONTROL
+
+
 def _trace_inputs(**fields: str) -> Any:
     """Inputs for a recommendation trace: tenant id plus the named call arguments."""
 
@@ -120,6 +128,7 @@ def _trace_recommendation(rec: Recommendation) -> dict[str, Any]:
     return {
         "cache": rec.cache_status,
         "embedding_tokens": rec.embedding_tokens,
+        "ranking_variant": rec.ranking_variant.value,
         "results": [
             {
                 "rank": r["rank"],
@@ -151,6 +160,7 @@ class QueryEngine:
         self._formatter = formatter or ResultFormatter()
         self._text_builder = text_builder or TextBuilder()
         self._filter_builder = filter_builder or FilterBuilder()
+        self._reranker = Reranker(session)
 
     # --- Query types ---
 
@@ -174,7 +184,7 @@ class QueryEngine:
             top_k,
             filters,
             include_raw_data,
-            lambda pinecone_filter: self._search_text(query_text, tenant, top_k, pinecone_filter),
+            lambda pinecone_filter, k: self._search_text(query_text, tenant, k, pinecone_filter),
         )
 
     @traced(
@@ -199,7 +209,7 @@ class QueryEngine:
             top_k,
             filters,
             include_raw_data,
-            lambda pinecone_filter: self._search_similar(item, tenant, top_k, pinecone_filter),
+            lambda pinecone_filter, k: self._search_similar(item, tenant, k, pinecone_filter),
         )
 
     @traced(
@@ -226,7 +236,7 @@ class QueryEngine:
             top_k,
             filters,
             include_raw_data,
-            lambda pinecone_filter: self._search_text(text, tenant, top_k, pinecone_filter),
+            lambda pinecone_filter, k: self._search_text(text, tenant, k, pinecone_filter),
         )
 
     @traced(
@@ -254,9 +264,14 @@ class QueryEngine:
                     f"Invalid filters in query '{query.id}'", details=exc.details
                 ) from exc
 
+        config = ranking_config(tenant.domain_config)
+        variant = _variant(config)
         keys = {
             q.id: self._cache.key(
-                tenant.id, {"type": QueryType.TEXT, "query": q.query}, pinecone_filters[q.id], top_k
+                tenant.id,
+                {"type": QueryType.TEXT, "variant": variant, "query": q.query},
+                pinecone_filters[q.id],
+                top_k,
             )
             for q in queries
         }
@@ -267,6 +282,9 @@ class QueryEngine:
         fresh: dict[str, list[dict[str, Any]]] = {}
         query_tokens: dict[str, int] = {}
         if misses:
+            prior = await workspace_stats(self._session, tenant.id) if config.enabled else None
+            rerank = prior is not None and prior.has_data
+            fetch_k = candidate_count(top_k) if rerank else top_k
             with track_embedding_usage() as usage:
                 try:
                     with _upstream_errors():
@@ -275,7 +293,7 @@ class QueryEngine:
                             *(
                                 self._vector_store.query(
                                     tenant.id,
-                                    top_k=top_k,
+                                    top_k=fetch_k,
                                     vector=vector,
                                     filter=pinecone_filters[q.id],
                                 )
@@ -288,6 +306,8 @@ class QueryEngine:
             base, extra = divmod(usage.tokens, len(misses))
             query_tokens = {q.id: base + (i < extra) for i, q in enumerate(misses)}
             for query, matches in zip(misses, all_matches, strict=True):
+                if rerank and prior is not None:
+                    matches = await self._reranker.rerank(tenant.id, matches, top_k, config, prior)
                 fresh[query.id] = self._formatter.format_results(matches, tenant)
             await asyncio.gather(*(self._cache.set(keys[q_id], r) for q_id, r in fresh.items()))
 
@@ -299,6 +319,7 @@ class QueryEngine:
                 results=hits[q.id] if q.id in hits else fresh[q.id],
                 cache_status="HIT" if q.id in hits else "MISS",
                 embedding_tokens=query_tokens.get(q.id, 0),
+                ranking_variant=variant,
             )
             for q in queries
         }
@@ -313,20 +334,28 @@ class QueryEngine:
         top_k: int,
         filters: dict[str, Any] | None,
         include_raw_data: bool,
-        search: Callable[[dict[str, Any]], Awaitable[Matches]],
+        search: Callable[[dict[str, Any], int], Awaitable[Matches]],
     ) -> Recommendation:
+        """`search(pinecone_filter, k)` returns the `k` nearest items."""
         pinecone_filter = self._filter_builder.build_pinecone_filter(filters, tenant.domain_config)
+        config = ranking_config(tenant.domain_config)
+        variant = _variant(config)
 
         def done(
             results: list[dict[str, Any]], status: CacheStatus, tokens: int = 0
         ) -> Recommendation:
-            return Recommendation(query_type, query_input, filters or {}, results, status, tokens)
+            return Recommendation(
+                query_type, query_input, filters or {}, results, status, tokens, variant
+            )
 
         # raw_data can be large and changes often; those responses are never cached.
         key = None
         if not include_raw_data:
             key = self._cache.key(
-                tenant.id, {"type": query_type, **query_input}, pinecone_filter, top_k
+                tenant.id,
+                {"type": query_type, "variant": variant, **query_input},
+                pinecone_filter,
+                top_k,
             )
             if (cached := await self._cache.get(key)) is not None:
                 return done(cached, "HIT")
@@ -334,7 +363,9 @@ class QueryEngine:
         with track_embedding_usage() as usage:
             try:
                 with _upstream_errors():
-                    matches = await search(pinecone_filter)
+                    matches = await self._ranked_search(
+                        tenant, top_k, config, lambda k: search(pinecone_filter, k)
+                    )
             finally:
                 # Tokens spent before a Pinecone failure still count.
                 await record_embedding_usage(self._session, tenant.id, UsageSource.QUERY, usage)
@@ -345,6 +376,23 @@ class QueryEngine:
             return done(results, "BYPASS", usage.tokens)
         await self._cache.set(key, results)
         return done(results, "MISS", usage.tokens)
+
+    async def _ranked_search(
+        self,
+        tenant: Tenant,
+        top_k: int,
+        config: RankingConfig,
+        search: Callable[[int], Awaitable[Matches]],
+    ) -> Matches:
+        """The top_k matches, re-ranked by feedback when enabled. A workspace with no
+        stats yet gets plain similarity order without fetching extra candidates."""
+        if not config.enabled:
+            return await search(top_k)
+        prior = await workspace_stats(self._session, tenant.id)
+        if not prior.has_data:
+            return await search(top_k)
+        candidates = await search(candidate_count(top_k))
+        return await self._reranker.rerank(tenant.id, candidates, top_k, config, prior)
 
     async def _search_text(
         self, text: str, tenant: Tenant, top_k: int, pinecone_filter: dict[str, Any]

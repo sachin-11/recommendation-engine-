@@ -330,7 +330,7 @@ async def test_every_served_result_is_an_impression(
             entry = await session.get(RecommendationLog, uuid.UUID(body["query_id"]))
         assert entry is not None
         assert entry.end_user_id == "user-42"
-        assert entry.ranking_variant == RankingVariant.CONTROL
+        assert entry.ranking_variant == RankingVariant.RERANKED  # the default
 
 
 async def test_user_id_is_optional(

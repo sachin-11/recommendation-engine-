@@ -17,9 +17,10 @@ class QueryType(StrEnum):
 
 
 class RankingVariant(StrEnum):
-    """How a query's results were ordered. Only CONTROL (vector similarity) exists so far."""
+    """How a query's results were ordered."""
 
-    CONTROL = "control"
+    CONTROL = "control"  # vector similarity alone
+    RERANKED = "reranked"  # similarity adjusted by item_stats (see reranker.py)
 
 
 class RecommendationLog(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):

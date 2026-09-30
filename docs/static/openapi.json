@@ -5707,6 +5707,9 @@
             "maxLength": 50,
             "minLength": 1,
             "title": "Item Label"
+          },
+          "ranking": {
+            "$ref": "#/components/schemas/RankingConfig"
           }
         },
         "additionalProperties": false,
@@ -6824,6 +6827,52 @@
           "PROFILE"
         ],
         "title": "QueryType"
+      },
+      "RankingConfig": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "False orders results by similarity alone, as before.",
+            "default": true
+          },
+          "engagement": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Engagement",
+            "description": "Clicks and thumbs up per impression.",
+            "default": 0.5
+          },
+          "conversion": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Conversion",
+            "description": "Purchases and applies per impression.",
+            "default": 0.5
+          },
+          "negative": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Negative",
+            "description": "Thumbs down and ignores per impression.",
+            "default": 0.5
+          },
+          "popularity": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Popularity",
+            "description": "How often the item is shown. Favours established items.",
+            "default": 0.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RankingConfig",
+        "description": "How much user feedback reorders vector-search results. Each weight scales how far\nan item's rate is above or below the workspace average; similarity counts 1."
       },
       "RecommendResponse": {
         "properties": {

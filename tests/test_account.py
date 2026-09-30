@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import settings
 from app.core.passwords import hash_password, verify_password
 from app.models import ApiKey, Tenant
+from app.schemas.tenant import RankingConfig
 from tests.conftest import ADMIN_HEADERS, link_token
 from tests.fakes import FakeVectorStore
 
@@ -232,7 +233,11 @@ async def test_update_domain_config(client: AsyncClient) -> None:
     assert label_only.json()["rebuild_recommended"] is False
     assert label_only.json()["tenant"]["domain_config"]["item_label"] == "role"
     assert filters.json()["rebuild_recommended"] is True
-    assert (await client.get(ME, headers=key)).json()["domain_config"] == config
+    # PUT replaces the whole config; the omitted ranking section gets its defaults.
+    assert (await client.get(ME, headers=key)).json()["domain_config"] == {
+        **config,
+        "ranking": RankingConfig().model_dump(),
+    }
 
 
 async def test_invalid_domain_config_is_422(client: AsyncClient) -> None:

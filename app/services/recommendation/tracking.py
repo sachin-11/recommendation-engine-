@@ -36,6 +36,7 @@ def build_log(
         cache_status=recommendation.cache_status,
         embedding_tokens=recommendation.embedding_tokens,
         end_user_id=end_user_id,
+        ranking_variant=recommendation.ranking_variant,
     )
 
 

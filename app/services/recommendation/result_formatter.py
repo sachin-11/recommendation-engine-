@@ -26,10 +26,13 @@ class ResultFormatter:
         include_raw_data: bool = False,
         raw_data: dict[str, dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        """Rank matches best first. `metadata` keeps only the tenant's filter fields;
-        `raw_data` (looked up by external_id) is added only when asked for."""
+        """Rank matches best first: by `ranking_score` when the reranker set one, else
+        by similarity. `metadata` keeps only the tenant's filter fields; `raw_data` (looked
+        up by external_id) is added only when asked for."""
         filter_fields = set(tenant.domain_config.get("filter_fields") or [])
-        ordered = sorted(pinecone_matches, key=lambda m: m["score"], reverse=True)
+        ordered = sorted(
+            pinecone_matches, key=lambda m: m.get("ranking_score", m["score"]), reverse=True
+        )
         results: list[dict[str, Any]] = []
         for rank, match in enumerate(ordered, start=1):
             metadata = match.get("metadata") or {}
