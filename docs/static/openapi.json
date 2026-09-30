@@ -5296,7 +5296,7 @@
                 "type": "string",
                 "maxLength": 255,
                 "minLength": 1,
-                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and personalized ranking will learn from it."
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and results lean toward items they liked (domain_config.ranking.personalization)."
               },
               {
                 "type": "null"
@@ -6349,7 +6349,7 @@
                 "type": "string",
                 "maxLength": 255,
                 "minLength": 1,
-                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and personalized ranking will learn from it."
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and results lean toward items they liked (domain_config.ranking.personalization)."
               },
               {
                 "type": "null"
@@ -6787,7 +6787,7 @@
                 "type": "string",
                 "maxLength": 255,
                 "minLength": 1,
-                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and personalized ranking will learn from it."
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and results lean toward items they liked (domain_config.ranking.personalization)."
               },
               {
                 "type": "null"
@@ -6833,7 +6833,7 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled",
-            "description": "False orders results by similarity alone, as before.",
+            "description": "False orders results by similarity to the query alone, as before.",
             "default": true
           },
           "engagement": {
@@ -6867,6 +6867,14 @@
             "title": "Popularity",
             "description": "How often the item is shown. Favours established items.",
             "default": 0.0
+          },
+          "personalization": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Personalization",
+            "description": "With a user_id, how far the query leans toward items that user liked: 0 ignores their history, 1 matches on history alone.",
+            "default": 0.2
           }
         },
         "additionalProperties": false,
@@ -7293,7 +7301,7 @@
                 "type": "string",
                 "maxLength": 255,
                 "minLength": 1,
-                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and personalized ranking will learn from it."
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and results lean toward items they liked (domain_config.ranking.personalization)."
               },
               {
                 "type": "null"

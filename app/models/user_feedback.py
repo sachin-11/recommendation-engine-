@@ -22,7 +22,10 @@ class UserFeedback(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     `end_user_id` is copied from the query's log, so clients never send it twice."""
 
     __tablename__ = "user_feedback"
-    __table_args__ = (Index("ix_user_feedback_tenant_id_created_at", "tenant_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_user_feedback_tenant_id_created_at", "tenant_id", "created_at"),
+        Index("ix_user_feedback_tenant_id_end_user_id", "tenant_id", "end_user_id"),
+    )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False

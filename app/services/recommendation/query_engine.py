@@ -2,7 +2,8 @@
 
 Every query follows the same path: validate filters -> check the result cache -> get a
 query vector (embed text, or reuse the item's stored vector) -> Pinecone similarity
-search -> re-rank by feedback (see reranker.py) -> format. Upstream failures become
+search (leaning toward the user's taste, see personalization.py) -> re-rank by feedback
+(see reranker.py) -> format. Upstream failures become
 503s; nothing partial is returned.
 """
 
@@ -44,6 +45,7 @@ from app.services.embedding.pinecone_service import (
 from app.services.embedding.text_builder import TextBuilder
 from app.services.recommendation.cache import RecommendationCache
 from app.services.recommendation.filter_builder import FilterBuilder
+from app.services.recommendation.personalization import Taste, liked_items
 from app.services.recommendation.reranker import Reranker, candidate_count, workspace_stats
 from app.services.recommendation.result_formatter import ResultFormatter
 from app.services.token_usage import record_embedding_usage
@@ -66,6 +68,8 @@ class Recommendation:
     # OpenAI tokens spent embedding this query (0 on cache hits and by-item queries).
     embedding_tokens: int = 0
     ranking_variant: RankingVariant = RankingVariant.CONTROL
+    # True when the query leaned toward the user's liked items.
+    personalized: bool = False
 
 
 @dataclass
@@ -129,6 +133,7 @@ def _trace_recommendation(rec: Recommendation) -> dict[str, Any]:
         "cache": rec.cache_status,
         "embedding_tokens": rec.embedding_tokens,
         "ranking_variant": rec.ranking_variant.value,
+        "personalized": rec.personalized,
         "results": [
             {
                 "rank": r["rank"],
@@ -176,6 +181,7 @@ class QueryEngine:
         top_k: int = 10,
         filters: dict[str, Any] | None = None,
         include_raw_data: bool = False,
+        user_id: str | None = None,
     ) -> Recommendation:
         return await self._recommend(
             tenant,
@@ -184,7 +190,10 @@ class QueryEngine:
             top_k,
             filters,
             include_raw_data,
-            lambda pinecone_filter, k: self._search_text(query_text, tenant, k, pinecone_filter),
+            user_id,
+            lambda pinecone_filter, k, taste: self._search_text(
+                query_text, tenant, k, pinecone_filter, taste
+            ),
         )
 
     @traced(
@@ -199,6 +208,7 @@ class QueryEngine:
         top_k: int = 10,
         filters: dict[str, Any] | None = None,
         include_raw_data: bool = False,
+        user_id: str | None = None,
     ) -> Recommendation:
         """Items similar to an existing item. The item itself is never in the results."""
         item = await self._embedded_item(tenant, external_id)
@@ -209,7 +219,10 @@ class QueryEngine:
             top_k,
             filters,
             include_raw_data,
-            lambda pinecone_filter, k: self._search_similar(item, tenant, k, pinecone_filter),
+            user_id,
+            lambda pinecone_filter, k, taste: self._search_similar(
+                item, tenant, k, pinecone_filter, taste
+            ),
         )
 
     @traced(
@@ -224,6 +237,7 @@ class QueryEngine:
         top_k: int = 10,
         filters: dict[str, Any] | None = None,
         include_raw_data: bool = False,
+        user_id: str | None = None,
     ) -> Recommendation:
         """E.g. HR: a candidate's skills and experience in, matching jobs out."""
         text = self._text_builder.build_profile_text(profile, tenant.domain_config)
@@ -236,7 +250,10 @@ class QueryEngine:
             top_k,
             filters,
             include_raw_data,
-            lambda pinecone_filter, k: self._search_text(text, tenant, k, pinecone_filter),
+            user_id,
+            lambda pinecone_filter, k, taste: self._search_text(
+                text, tenant, k, pinecone_filter, taste
+            ),
         )
 
     @traced(
@@ -249,7 +266,11 @@ class QueryEngine:
         outputs=lambda recs: {qid: _trace_recommendation(r) for qid, r in recs.items()},
     )
     async def recommend_batch(
-        self, queries: list[BatchQuery], tenant: Tenant, top_k: int = 10
+        self,
+        queries: list[BatchQuery],
+        tenant: Tenant,
+        top_k: int = 10,
+        user_id: str | None = None,
     ) -> dict[str, Recommendation]:
         """Several text queries at once: one OpenAI call for all uncached texts, then the
         Pinecone searches run concurrently. Any upstream failure fails the whole batch."""
@@ -266,10 +287,12 @@ class QueryEngine:
 
         config = ranking_config(tenant.domain_config)
         variant = _variant(config)
+        history = await self._history(tenant, config, user_id)
+        personal = {"user": user_id} if history else {}
         keys = {
             q.id: self._cache.key(
                 tenant.id,
-                {"type": QueryType.TEXT, "variant": variant, "query": q.query},
+                {"type": QueryType.TEXT, "variant": variant, **personal, "query": q.query},
                 pinecone_filters[q.id],
                 top_k,
             )
@@ -281,6 +304,7 @@ class QueryEngine:
 
         fresh: dict[str, list[dict[str, Any]]] = {}
         query_tokens: dict[str, int] = {}
+        taste: Taste | None = None
         if misses:
             prior = await workspace_stats(self._session, tenant.id) if config.enabled else None
             rerank = prior is not None and prior.has_data
@@ -288,7 +312,10 @@ class QueryEngine:
             with track_embedding_usage() as usage:
                 try:
                     with _upstream_errors():
+                        taste = await self._taste(tenant, config, history)
                         vectors = await self._embedder.embed_batch([q.query for q in misses])
+                        if taste is not None:
+                            vectors = [taste.apply(v) for v in vectors]
                         all_matches = await asyncio.gather(
                             *(
                                 self._vector_store.query(
@@ -320,6 +347,7 @@ class QueryEngine:
                 cache_status="HIT" if q.id in hits else "MISS",
                 embedding_tokens=query_tokens.get(q.id, 0),
                 ranking_variant=variant,
+                personalized=bool(history) if q.id in hits else taste is not None,
             )
             for q in queries
         }
@@ -334,18 +362,30 @@ class QueryEngine:
         top_k: int,
         filters: dict[str, Any] | None,
         include_raw_data: bool,
-        search: Callable[[dict[str, Any], int], Awaitable[Matches]],
+        user_id: str | None,
+        search: Callable[[dict[str, Any], int, Taste | None], Awaitable[Matches]],
     ) -> Recommendation:
-        """`search(pinecone_filter, k)` returns the `k` nearest items."""
+        """`search(pinecone_filter, k, taste)` returns the `k` nearest items, leaning
+        toward `taste` when there is one."""
         pinecone_filter = self._filter_builder.build_pinecone_filter(filters, tenant.domain_config)
         config = ranking_config(tenant.domain_config)
         variant = _variant(config)
+        history = await self._history(tenant, config, user_id)
+        # A user with no history gets the anonymous results, so shares their cache entry.
+        personal = {"user": user_id} if history else {}
 
         def done(
             results: list[dict[str, Any]], status: CacheStatus, tokens: int = 0
         ) -> Recommendation:
             return Recommendation(
-                query_type, query_input, filters or {}, results, status, tokens, variant
+                query_type,
+                query_input,
+                filters or {},
+                results,
+                status,
+                tokens,
+                variant,
+                personalized=bool(history),
             )
 
         # raw_data can be large and changes often; those responses are never cached.
@@ -353,7 +393,7 @@ class QueryEngine:
         if not include_raw_data:
             key = self._cache.key(
                 tenant.id,
-                {"type": query_type, "variant": variant, **query_input},
+                {"type": query_type, "variant": variant, **personal, **query_input},
                 pinecone_filter,
                 top_k,
             )
@@ -363,8 +403,9 @@ class QueryEngine:
         with track_embedding_usage() as usage:
             try:
                 with _upstream_errors():
+                    taste = await self._taste(tenant, config, history)
                     matches = await self._ranked_search(
-                        tenant, top_k, config, lambda k: search(pinecone_filter, k)
+                        tenant, top_k, config, lambda k: search(pinecone_filter, k, taste)
                     )
             finally:
                 # Tokens spent before a Pinecone failure still count.
@@ -394,21 +435,64 @@ class QueryEngine:
         candidates = await search(candidate_count(top_k))
         return await self._reranker.rerank(tenant.id, candidates, top_k, config, prior)
 
+    async def _history(
+        self, tenant: Tenant, config: RankingConfig, user_id: str | None
+    ) -> list[str]:
+        """Pinecone ids of the items this user liked, when personalization applies."""
+        if not user_id or not config.enabled or config.personalization <= 0:
+            return []
+        return await liked_items(self._session, tenant.id, user_id)
+
+    async def _taste(
+        self, tenant: Tenant, config: RankingConfig, history: list[str]
+    ) -> Taste | None:
+        if not history:
+            return None
+        vectors = await self._vector_store.fetch_vectors(tenant.id, history)
+        return Taste.from_vectors(list(vectors.values()), config.personalization)
+
     async def _search_text(
-        self, text: str, tenant: Tenant, top_k: int, pinecone_filter: dict[str, Any]
+        self,
+        text: str,
+        tenant: Tenant,
+        top_k: int,
+        pinecone_filter: dict[str, Any],
+        taste: Taste | None,
     ) -> Matches:
         vector = await self._embedder.embed_text(text)
+        if taste is not None:
+            vector = taste.apply(vector)
         return await self._vector_store.query(
             tenant.id, top_k=top_k, vector=vector, filter=pinecone_filter
         )
 
     async def _search_similar(
-        self, item: Item, tenant: Tenant, top_k: int, pinecone_filter: dict[str, Any]
+        self,
+        item: Item,
+        tenant: Tenant,
+        top_k: int,
+        pinecone_filter: dict[str, Any],
+        taste: Taste | None,
     ) -> Matches:
-        # Query by the stored vector's id (one round trip); ask for one extra to drop itself.
-        matches = await self._vector_store.query(
-            tenant.id, top_k=top_k + 1, id=item.pinecone_id, filter=pinecone_filter
+        assert item.pinecone_id is not None  # _embedded_item checked it
+        # Query by the stored vector's id (one round trip) unless it must be blended with
+        # the user's taste first. Ask for one extra to drop the item itself.
+        stored = (
+            await self._vector_store.fetch_vectors(tenant.id, [item.pinecone_id])
+            if taste is not None
+            else {}
         )
+        if taste is not None and item.pinecone_id in stored:
+            matches = await self._vector_store.query(
+                tenant.id,
+                top_k=top_k + 1,
+                vector=taste.apply(stored[item.pinecone_id]),
+                filter=pinecone_filter,
+            )
+        else:
+            matches = await self._vector_store.query(
+                tenant.id, top_k=top_k + 1, id=item.pinecone_id, filter=pinecone_filter
+            )
         return [m for m in matches if m["id"] != item.pinecone_id][:top_k]
 
     async def _embedded_item(self, tenant: Tenant, external_id: str) -> Item:

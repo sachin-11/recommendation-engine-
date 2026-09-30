@@ -42,13 +42,23 @@ class RankingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = Field(
-        default=True, description="False orders results by similarity alone, as before."
+        default=True,
+        description="False orders results by similarity to the query alone, as before.",
     )
     engagement: Weight = Field(default=0.5, description="Clicks and thumbs up per impression.")
     conversion: Weight = Field(default=0.5, description="Purchases and applies per impression.")
     negative: Weight = Field(default=0.5, description="Thumbs down and ignores per impression.")
     popularity: Weight = Field(
         default=0.0, description="How often the item is shown. Favours established items."
+    )
+    personalization: float = Field(
+        default=0.2,
+        ge=0,
+        le=1,
+        description=(
+            "With a user_id, how far the query leans toward items that user liked: "
+            "0 ignores their history, 1 matches on history alone."
+        ),
     )
 
 

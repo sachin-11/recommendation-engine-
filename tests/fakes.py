@@ -95,6 +95,7 @@ class FakeVectorStore:
         self.fail_ids: set[str] = set()
         self.query_times_out = False
         self.queries: list[dict[str, Any]] = []
+        self.fetches: list[list[str]] = []
 
     async def ensure_index_exists(
         self, tenant_id: uuid.UUID | str | None = None, dimension: int | None = None
@@ -169,6 +170,15 @@ class FakeVectorStore:
 
     def vectors(self, tenant_id: uuid.UUID | str) -> dict[str, dict[str, Any]]:
         return self.namespaces.get(namespace_for(tenant_id), {})
+
+    async def fetch_vectors(
+        self, tenant_id: uuid.UUID | str, ids: list[str]
+    ) -> dict[str, list[float]]:
+        self.fetches.append(ids)
+        if self.unavailable:
+            raise VectorStoreUnavailableError("Pinecone is down (fake)")
+        index = self.vectors(tenant_id)
+        return {vid: list(index[vid]["values"]) for vid in ids if vid in index}
 
     async def query(
         self,

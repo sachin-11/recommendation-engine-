@@ -74,6 +74,7 @@ export const rankingConfigSchema = z
     conversion: weight,
     negative: weight,
     popularity: weight,
+    personalization: z.number().min(0, "Must be 0 or more").max(1, "Must be 1 or less"),
   })
   .partial()
   .strict();

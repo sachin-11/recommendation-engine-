@@ -313,6 +313,31 @@ class PineconeService:
             for m in response.matches
         ]
 
+    async def fetch_vectors(
+        self, tenant_id: uuid.UUID | str, ids: list[str]
+    ) -> dict[str, list[float]]:
+        """Stored vectors by id, from the tenant's namespace. Missing ids are left out.
+        Same timeout and errors as `query`: a user is waiting on it."""
+        if not ids:
+            return {}
+        timeout = self.query_timeout
+        try:
+            with track_external_call("pinecone", "fetch"):
+                async with asyncio.timeout(timeout):
+                    index = await self._index()
+                    response = await asyncio.to_thread(
+                        index.fetch, ids=ids, namespace=namespace_for(tenant_id)
+                    )
+        except (IndexNotFoundError, PineconeNotFoundError):
+            return {}
+        except TimeoutError as exc:
+            raise VectorStoreTimeoutError(f"Pinecone fetch timed out after {timeout:.0f}s") from exc
+        except VectorStoreUnavailableError:
+            raise
+        except Exception as exc:
+            raise VectorStoreUnavailableError(f"Pinecone fetch failed: {exc}") from exc
+        return {vid: list(v.values) for vid, v in (response.vectors or {}).items()}
+
     async def warm_up(self) -> None:
         """Open the index handle and its connection, so the first query does not pay for
         the index lookup and TLS setup. Failures are ignored."""

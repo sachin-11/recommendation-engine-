@@ -33,7 +33,7 @@ EndUserId = Annotated[
         description=(
             "Your own id for the person who will see these results, e.g. a user id or a "
             "hashed email. Optional. Feedback on this query is attributed to the same user, "
-            "and personalized ranking will learn from it."
+            "and results lean toward items they liked (domain_config.ranking.personalization)."
         ),
     ),
 ]

@@ -15,6 +15,8 @@ export interface RankingConfig {
   conversion?: number;
   negative?: number;
   popularity?: number;
+  /** 0–1: how far a query with a user_id leans toward items that user liked. */
+  personalization?: number;
 }
 
 export interface DomainConfig {

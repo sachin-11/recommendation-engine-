@@ -293,7 +293,7 @@ Feedback types: `CLICK`, `THUMBS_UP`, `THUMBS_DOWN`, `PURCHASE`, `APPLY`, `IGNOR
 
 ### Say who the results are for
 
-Add `user_id` to a recommendation request: your own id for the person who will see the results, such as a user id or a hashed email (up to 255 characters). It is optional. Feedback on that query is attributed to the same user, so you do not send it again with feedback. Personalized ranking learns from it.
+Add `user_id` to a recommendation request: your own id for the person who will see the results, such as a user id or a hashed email (up to 255 characters). It is optional. Feedback on that query is attributed to the same user, so you do not send it again with feedback, and that user's later results lean toward what they liked (see `personalization` below).
 
 ```bash
 curl -X POST $RECO_API/api/v1/recommend/by-text   -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json"   -d '{"query": "senior python developer", "top_k": 10, "user_id": "candidate-8812"}'
@@ -313,11 +313,16 @@ Every few minutes, each item's feedback from the last 30 days is added up per im
   "engagement": 0.5,
   "conversion": 0.5,
   "negative": 0.5,
-  "popularity": 0.0
+  "popularity": 0.0,
+  "personalization": 0.2
 }
 ```
 
-`engagement` is clicks and thumbs up, `conversion` is purchases and applies, `negative` is thumbs down and ignores, and `popularity` favours items shown often. Set `enabled` to `false` to order by similarity alone. Saving a domain config without a `ranking` section resets these weights to the defaults above.
+`engagement` is clicks and thumbs up, `conversion` is purchases and applies, `negative` is thumbs down and ignores, and `popularity` favours items shown often.
+
+`personalization` (0–1) applies to requests with a `user_id`. The query leans toward the items that user clicked, liked, bought or applied to in the last 30 days: 0 ignores their history, 1 matches on it alone. A user with no history gets the same results as an anonymous request. For personalized requests, `score` is the similarity to the blended query.
+
+Set `enabled` to `false` to order by similarity to the query alone, with no feedback or personalization. Saving a domain config without a `ranking` section resets these weights to the defaults above.
 
 ## What's next
 

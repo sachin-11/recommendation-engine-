@@ -154,7 +154,12 @@ async def recommend_by_text(
 ) -> RecommendResponse:
     await limits.consume_queries()
     recommendation = await engine.recommend_by_text(
-        payload.query, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
+        payload.query,
+        auth.tenant,
+        payload.top_k,
+        payload.filters,
+        payload.include_raw_data,
+        payload.user_id,
     )
     return respond.single(recommendation, payload.user_id)
 
@@ -177,7 +182,12 @@ async def recommend_by_item(
 ) -> RecommendResponse:
     await limits.consume_queries()
     recommendation = await engine.recommend_by_item_id(
-        payload.external_id, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
+        payload.external_id,
+        auth.tenant,
+        payload.top_k,
+        payload.filters,
+        payload.include_raw_data,
+        payload.user_id,
     )
     return respond.single(recommendation, payload.user_id)
 
@@ -197,7 +207,12 @@ async def recommend_by_profile(
 ) -> RecommendResponse:
     await limits.consume_queries()
     recommendation = await engine.recommend_by_profile(
-        payload.profile, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
+        payload.profile,
+        auth.tenant,
+        payload.top_k,
+        payload.filters,
+        payload.include_raw_data,
+        payload.user_id,
     )
     return respond.single(recommendation, payload.user_id)
 
@@ -217,7 +232,9 @@ async def recommend_batch(
 ) -> BatchRecommendResponse:
     await limits.consume_queries(len(payload.queries))
     queries = [BatchQuery(q.id, q.query, q.filters) for q in payload.queries]
-    recommendations = await engine.recommend_batch(queries, auth.tenant, payload.top_k)
+    recommendations = await engine.recommend_batch(
+        queries, auth.tenant, payload.top_k, payload.user_id
+    )
     return respond.batch(recommendations, payload.user_id)
 
 
