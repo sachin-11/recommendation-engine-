@@ -18,7 +18,8 @@ class FeedbackType(StrEnum):
 
 
 class UserFeedback(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
-    """An end user's reaction to one recommended item. Collected now to train rankers later."""
+    """An end user's reaction to one recommended item. Collected now to train rankers later.
+    `end_user_id` is copied from the query's log, so clients never send it twice."""
 
     __tablename__ = "user_feedback"
     __table_args__ = (Index("ix_user_feedback_tenant_id_created_at", "tenant_id", "created_at"),)
@@ -33,6 +34,7 @@ class UserFeedback(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     feedback_type: Mapped[FeedbackType] = mapped_column(
         SAEnum(FeedbackType, name="feedback_type"), nullable=False
     )
+    end_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     def __repr__(self) -> str:
         return f"<UserFeedback id={self.id} {self.feedback_type} item={self.external_item_id!r}>"

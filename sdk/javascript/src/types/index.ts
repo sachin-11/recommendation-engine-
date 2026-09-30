@@ -120,6 +120,8 @@ export interface RecommendOptions {
   filters?: Filters;
   /** Include each item's uploaded data (these responses are never cached). */
   includeRawData?: boolean;
+  /** Your id for the person who will see the results; feedback on them is attributed to them. */
+  userId?: string;
 }
 
 export interface Recommendation {

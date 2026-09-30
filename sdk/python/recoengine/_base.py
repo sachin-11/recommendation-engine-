@@ -108,6 +108,16 @@ def raise_for_response(response: httpx.Response) -> None:
 
 
 def recommend_body(
-    top_k: int, filters: dict[str, Any] | None, include_raw_data: bool
+    top_k: int,
+    filters: dict[str, Any] | None,
+    include_raw_data: bool,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
-    return {"top_k": top_k, "filters": filters or {}, "include_raw_data": include_raw_data}
+    body: dict[str, Any] = {
+        "top_k": top_k,
+        "filters": filters or {},
+        "include_raw_data": include_raw_data,
+    }
+    if user_id is not None:
+        body["user_id"] = user_id
+    return body

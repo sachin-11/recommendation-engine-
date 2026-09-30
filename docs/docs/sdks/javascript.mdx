@@ -50,6 +50,7 @@ const byText = await client.recommend.byText("senior python developer", {
   topK: 10,
   filters: { location: ["Remote", "Delhi"], experience_years: { lte: 5 } },
   includeRawData: true, // adds each item's uploaded data; never cached
+  userId: "candidate-8812", // optional: your id for who sees the results
 });
 
 const similar = await client.recommend.byItem("job-101", { topK: 5 });

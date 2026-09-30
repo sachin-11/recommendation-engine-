@@ -148,6 +148,23 @@ describe("recommend", () => {
     expect(result.cache).toBe("HIT");
   });
 
+  it("sends userId as user_id only when given", async () => {
+    const { client, mock } = setup();
+    const bodies: Record<string, unknown>[] = [];
+    mock.onPost("/recommend/by-text").reply((config) => {
+      bodies.push(JSON.parse(config.data));
+      return [200, RESULTS];
+    });
+    mock.onPost("/recommend/batch").reply((config) => {
+      bodies.push(JSON.parse(config.data));
+      return [200, { results: {}, query_ids: {}, latency_ms: 1, embedding_tokens: 0, request_id: "r" }];
+    });
+    await client.recommend.byText("q", { userId: "user-42" });
+    await client.recommend.byText("q");
+    await client.recommend.batch([{ id: "q1", query: "q" }], { userId: "user-42" });
+    expect(bodies.map((b) => b.user_id)).toEqual(["user-42", undefined, "user-42"]);
+  });
+
   it("supports by-item, by-profile and feedback", async () => {
     const { client, mock } = setup();
     mock.onPost("/recommend/by-item").reply(200, RESULTS);

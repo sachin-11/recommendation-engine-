@@ -26,6 +26,17 @@ Filters = Annotated[
         ),
     ),
 ]
+EndUserId = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=255),
+    Field(
+        description=(
+            "Your own id for the person who will see these results, e.g. a user id or a "
+            "hashed email. Optional. Feedback on this query is attributed to the same user, "
+            "and personalized ranking will learn from it."
+        ),
+    ),
+]
 
 
 class _RecommendRequest(BaseModel):
@@ -36,6 +47,7 @@ class _RecommendRequest(BaseModel):
     include_raw_data: bool = Field(
         default=False, description="Include each item's full uploaded data (never cached)."
     )
+    user_id: EndUserId | None = None
 
 
 class TextRecommendRequest(_RecommendRequest):
@@ -127,6 +139,7 @@ class BatchRecommendRequest(BaseModel):
 
     queries: list[BatchQueryIn] = Field(min_length=1, max_length=MAX_BATCH_QUERIES)
     top_k: TopK = 10
+    user_id: EndUserId | None = None
 
     @model_validator(mode="after")
     def _unique_ids(self) -> Self:

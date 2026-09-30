@@ -16,12 +16,19 @@ class QueryType(StrEnum):
     PROFILE = "PROFILE"
 
 
+class RankingVariant(StrEnum):
+    """How a query's results were ordered. Only CONTROL (vector similarity) exists so far."""
+
+    CONTROL = "control"
+
+
 class RecommendationLog(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     """One served recommendation request. Its id is the `query_id` clients send feedback for."""
 
     __tablename__ = "recommendation_logs"
     __table_args__ = (
         Index("ix_recommendation_logs_tenant_id_created_at", "tenant_id", "created_at"),
+        Index("ix_recommendation_logs_tenant_id_end_user_id", "tenant_id", "end_user_id"),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -39,6 +46,11 @@ class RecommendationLog(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     cache_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
     embedding_tokens: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+    # The tenant's own id for the person the results were shown to, when they send one.
+    end_user_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ranking_variant: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=RankingVariant.CONTROL, server_default="control"
     )
 
     def __repr__(self) -> str:

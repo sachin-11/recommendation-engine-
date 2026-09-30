@@ -50,6 +50,7 @@ results = client.recommend.by_text(
     query="senior python developer",
     top_k=10,
     filters={"location": "Delhi"},
+    user_id="candidate-8812",  # optional: your id for who sees the results
 )
 for item in results.results:
     print(f"{item.rank}. {item.external_id} — {item.score_label}")

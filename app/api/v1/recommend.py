@@ -26,6 +26,7 @@ from app.schemas.recommend import (
 from app.services.recommendation.dependencies import QueryEngineDep
 from app.services.recommendation.query_engine import BatchQuery, Recommendation
 from app.services.recommendation.tracking import (
+    build_impressions,
     build_log,
     record_feedback,
     save_recommendation_logs,
@@ -67,10 +68,10 @@ class Responder:
         self._background_tasks = background_tasks
         self._session_factory = session_factory
 
-    def single(self, recommendation: Recommendation) -> RecommendResponse:
+    def single(self, recommendation: Recommendation, user_id: str | None) -> RecommendResponse:
         latency_ms = self._latency_ms()
         query_id = uuid.uuid4()
-        self._save_logs([(query_id, recommendation)], latency_ms)
+        self._save_logs([(query_id, recommendation)], latency_ms, user_id)
         self._response.headers[CACHE_HEADER] = recommendation.cache_status
         return RecommendResponse(
             results=recommendation.results,
@@ -81,10 +82,14 @@ class Responder:
             request_id=self._request_id,
         )
 
-    def batch(self, recommendations: dict[str, Recommendation]) -> BatchRecommendResponse:
+    def batch(
+        self, recommendations: dict[str, Recommendation], user_id: str | None
+    ) -> BatchRecommendResponse:
         latency_ms = self._latency_ms()
         query_ids = {qid: uuid.uuid4() for qid in recommendations}
-        self._save_logs([(query_ids[q], r) for q, r in recommendations.items()], latency_ms)
+        self._save_logs(
+            [(query_ids[q], r) for q, r in recommendations.items()], latency_ms, user_id
+        )
         statuses = {r.cache_status for r in recommendations.values()}
         self._response.headers[CACHE_HEADER] = statuses.pop() if len(statuses) == 1 else "PARTIAL"
         return BatchRecommendResponse(
@@ -95,9 +100,19 @@ class Responder:
             request_id=self._request_id,
         )
 
-    def _save_logs(self, entries: list[tuple[uuid.UUID, Recommendation]], latency_ms: int) -> None:
-        logs = [build_log(qid, self._tenant_id, rec, latency_ms) for qid, rec in entries]
-        self._background_tasks.add_task(save_recommendation_logs, self._session_factory, logs)
+    def _save_logs(
+        self,
+        entries: list[tuple[uuid.UUID, Recommendation]],
+        latency_ms: int,
+        user_id: str | None,
+    ) -> None:
+        logs = [build_log(qid, self._tenant_id, rec, latency_ms, user_id) for qid, rec in entries]
+        impressions = [
+            row for qid, rec in entries for row in build_impressions(qid, self._tenant_id, rec)
+        ]
+        self._background_tasks.add_task(
+            save_recommendation_logs, self._session_factory, logs, impressions
+        )
         for (_, rec), entry in zip(entries, logs, strict=True):
             RECO_REQUESTS.labels(str(self._tenant_id), rec.query_type.value).inc()
             RECO_LATENCY.labels(rec.query_type.value).observe(latency_ms / 1000)
@@ -141,7 +156,7 @@ async def recommend_by_text(
     recommendation = await engine.recommend_by_text(
         payload.query, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
     )
-    return respond.single(recommendation)
+    return respond.single(recommendation, payload.user_id)
 
 
 @router.post(
@@ -164,7 +179,7 @@ async def recommend_by_item(
     recommendation = await engine.recommend_by_item_id(
         payload.external_id, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
     )
-    return respond.single(recommendation)
+    return respond.single(recommendation, payload.user_id)
 
 
 @router.post(
@@ -184,7 +199,7 @@ async def recommend_by_profile(
     recommendation = await engine.recommend_by_profile(
         payload.profile, auth.tenant, payload.top_k, payload.filters, payload.include_raw_data
     )
-    return respond.single(recommendation)
+    return respond.single(recommendation, payload.user_id)
 
 
 @router.post(
@@ -203,7 +218,7 @@ async def recommend_batch(
     await limits.consume_queries(len(payload.queries))
     queries = [BatchQuery(q.id, q.query, q.filters) for q in payload.queries]
     recommendations = await engine.recommend_batch(queries, auth.tenant, payload.top_k)
-    return respond.batch(recommendations)
+    return respond.batch(recommendations, payload.user_id)
 
 
 @router.post(

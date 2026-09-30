@@ -5289,6 +5289,20 @@
             "minimum": 1.0,
             "title": "Top K",
             "default": 10
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and personalized ranking will learn from it."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
           }
         },
         "additionalProperties": false,
@@ -6326,6 +6340,20 @@
             "description": "Include each item's full uploaded data (never cached).",
             "default": false
           },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and personalized ranking will learn from it."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
           "external_id": {
             "type": "string",
             "maxLength": 255,
@@ -6749,6 +6777,20 @@
             "title": "Include Raw Data",
             "description": "Include each item's full uploaded data (never cached).",
             "default": false
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and personalized ranking will learn from it."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
           },
           "profile": {
             "additionalProperties": true,
@@ -7195,6 +7237,20 @@
             "title": "Include Raw Data",
             "description": "Include each item's full uploaded data (never cached).",
             "default": false
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and personalized ranking will learn from it."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
           },
           "query": {
             "type": "string",

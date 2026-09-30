@@ -6,7 +6,13 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models import QueryType, RecommendationLog, UserFeedback
+from app.models import (
+    QueryType,
+    RankingVariant,
+    RecommendationImpression,
+    RecommendationLog,
+    UserFeedback,
+)
 from app.services.embedding import openai_embedder
 from tests.conftest import TenantAuth, register_tenant
 from tests.fakes import FakeOpenAIClient, FakeVectorStore
@@ -294,6 +300,102 @@ async def test_feedback_for_unknown_or_foreign_query_is_404(
     )
 
     assert (unknown.status_code, foreign.status_code, bad_type.status_code) == (404, 404, 422)
+
+
+async def _impressions(
+    session_factory: async_sessionmaker[AsyncSession], query_id: str
+) -> list[tuple[int, str, float]]:
+    async with session_factory() as session:
+        rows = await session.scalars(
+            select(RecommendationImpression)
+            .where(RecommendationImpression.recommendation_log_id == uuid.UUID(query_id))
+            .order_by(RecommendationImpression.rank)
+        )
+        return [(r.rank, r.external_item_id, r.score) for r in rows]
+
+
+async def test_every_served_result_is_an_impression(
+    client: AsyncClient, hr: TenantAuth, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    payload = {"query": JOB1_TEXT, "top_k": 3, "user_id": "  user-42 "}
+    first = await client.post(f"{REC}/by-text", json=payload, headers=hr.headers)
+    cached = await client.post(f"{REC}/by-text", json=payload, headers=hr.headers)
+
+    assert cached.headers["X-Cache"] == "HIT"
+    for body in (first.json(), cached.json()):
+        served = [(r["rank"], r["external_id"], r["score"]) for r in body["results"]]
+        assert len(served) == 3
+        assert await _impressions(session_factory, body["query_id"]) == served
+        async with session_factory() as session:
+            entry = await session.get(RecommendationLog, uuid.UUID(body["query_id"]))
+        assert entry is not None
+        assert entry.end_user_id == "user-42"
+        assert entry.ranking_variant == RankingVariant.CONTROL
+
+
+async def test_user_id_is_optional(
+    client: AsyncClient, hr: TenantAuth, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    body = (await client.post(f"{REC}/by-text", json={"query": "x"}, headers=hr.headers)).json()
+
+    async with session_factory() as session:
+        entry = await session.get(RecommendationLog, uuid.UUID(body["query_id"]))
+    assert entry is not None
+    assert entry.end_user_id is None
+
+
+async def test_batch_user_id_applies_to_every_query(
+    client: AsyncClient, hr: TenantAuth, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    body = (
+        await client.post(
+            f"{REC}/batch",
+            json={
+                "queries": [{"id": "a", "query": "python"}, {"id": "b", "query": "react"}],
+                "top_k": 2,
+                "user_id": "user-7",
+            },
+            headers=hr.headers,
+        )
+    ).json()
+
+    for qid in ("a", "b"):
+        query_id = body["query_ids"][qid]
+        served = [(r["rank"], r["external_id"], r["score"]) for r in body["results"][qid]]
+        assert await _impressions(session_factory, query_id) == served
+        async with session_factory() as session:
+            entry = await session.get(RecommendationLog, uuid.UUID(query_id))
+        assert entry is not None
+        assert entry.end_user_id == "user-7"
+
+
+async def test_invalid_user_id_is_422(client: AsyncClient, hr: TenantAuth) -> None:
+    for user_id in ("", "   ", "u" * 256, 42):
+        response = await client.post(
+            f"{REC}/by-text", json={"query": "x", "user_id": user_id}, headers=hr.headers
+        )
+        assert response.status_code == 422, user_id
+
+
+async def test_feedback_is_attributed_to_the_querys_user(
+    client: AsyncClient, hr: TenantAuth, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    query = (
+        await client.post(
+            f"{REC}/by-text", json={"query": "x", "user_id": "user-42"}, headers=hr.headers
+        )
+    ).json()
+
+    response = await client.post(
+        f"{REC}/feedback",
+        json={"query_id": query["query_id"], "external_item_id": "job-1", "feedback_type": "CLICK"},
+        headers=hr.headers,
+    )
+
+    assert response.status_code == 201, response.text
+    async with session_factory() as session:
+        stored = (await session.scalars(select(UserFeedback))).one()
+    assert stored.end_user_id == "user-42"
 
 
 async def test_analytics_overview(client: AsyncClient, hr: TenantAuth) -> None:

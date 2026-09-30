@@ -22,11 +22,14 @@ def _result(response: httpx.Response) -> RecommendResult:
     )
 
 
-def _batch_body(queries: BatchQueries, top_k: int) -> dict[str, Any]:
+def _batch_body(queries: BatchQueries, top_k: int, user_id: Optional[str]) -> dict[str, Any]:
     items: List[Dict[str, Any]] = [
         q.model_dump() if isinstance(q, BatchQuery) else dict(q) for q in queries
     ]
-    return {"queries": items, "top_k": top_k}
+    body: Dict[str, Any] = {"queries": items, "top_k": top_k}
+    if user_id is not None:
+        body["user_id"] = user_id
+    return body
 
 
 def _feedback_body(query_id: str, item_id: str, feedback_type: FeedbackType) -> dict[str, Any]:
@@ -44,13 +47,15 @@ class Recommend:
         top_k: int = 10,
         filters: Filters = None,
         include_raw_data: bool = False,
+        user_id: Optional[str] = None,
     ) -> RecommendResult:
         """Items most similar to free text.
 
         Filters use your `filter_fields`: `"Delhi"` exact, `["Delhi", "Pune"]` any of,
-        `{"gte": 3, "lte": 8}` range.
+        `{"gte": 3, "lte": 8}` range. `user_id` is your id for the person who will see the
+        results; feedback on them is attributed to that user.
         """
-        body = {"query": query, **recommend_body(top_k, filters, include_raw_data)}
+        body = {"query": query, **recommend_body(top_k, filters, include_raw_data, user_id)}
         return _result(self._client._request("POST", "/recommend/by-text", json=body))
 
     def by_item(
@@ -60,9 +65,13 @@ class Recommend:
         top_k: int = 10,
         filters: Filters = None,
         include_raw_data: bool = False,
+        user_id: Optional[str] = None,
     ) -> RecommendResult:
         """Items similar to one of your items; the item itself is never returned."""
-        body = {"external_id": external_id, **recommend_body(top_k, filters, include_raw_data)}
+        body = {
+            "external_id": external_id,
+            **recommend_body(top_k, filters, include_raw_data, user_id),
+        }
         return _result(self._client._request("POST", "/recommend/by-item", json=body))
 
     def by_profile(
@@ -72,15 +81,18 @@ class Recommend:
         top_k: int = 10,
         filters: Filters = None,
         include_raw_data: bool = False,
+        user_id: Optional[str] = None,
     ) -> RecommendResult:
         """Items matching a profile, e.g. {"skills": "Python", "experience": "5 years"}."""
-        body = {"profile": profile, **recommend_body(top_k, filters, include_raw_data)}
+        body = {"profile": profile, **recommend_body(top_k, filters, include_raw_data, user_id)}
         return _result(self._client._request("POST", "/recommend/by-profile", json=body))
 
-    def batch(self, queries: BatchQueries, *, top_k: int = 10) -> BatchRecommendResult:
+    def batch(
+        self, queries: BatchQueries, *, top_k: int = 10, user_id: Optional[str] = None
+    ) -> BatchRecommendResult:
         """Up to 20 text queries in one request."""
         response = self._client._request(
-            "POST", "/recommend/batch", json=_batch_body(queries, top_k)
+            "POST", "/recommend/batch", json=_batch_body(queries, top_k, user_id)
         )
         return BatchRecommendResult.model_validate(
             {**response.json(), "cache": response.headers.get("x-cache")}
@@ -104,8 +116,9 @@ class AsyncRecommend:
         top_k: int = 10,
         filters: Filters = None,
         include_raw_data: bool = False,
+        user_id: Optional[str] = None,
     ) -> RecommendResult:
-        body = {"query": query, **recommend_body(top_k, filters, include_raw_data)}
+        body = {"query": query, **recommend_body(top_k, filters, include_raw_data, user_id)}
         return _result(await self._client._request("POST", "/recommend/by-text", json=body))
 
     async def by_item(
@@ -115,8 +128,12 @@ class AsyncRecommend:
         top_k: int = 10,
         filters: Filters = None,
         include_raw_data: bool = False,
+        user_id: Optional[str] = None,
     ) -> RecommendResult:
-        body = {"external_id": external_id, **recommend_body(top_k, filters, include_raw_data)}
+        body = {
+            "external_id": external_id,
+            **recommend_body(top_k, filters, include_raw_data, user_id),
+        }
         return _result(await self._client._request("POST", "/recommend/by-item", json=body))
 
     async def by_profile(
@@ -126,13 +143,16 @@ class AsyncRecommend:
         top_k: int = 10,
         filters: Filters = None,
         include_raw_data: bool = False,
+        user_id: Optional[str] = None,
     ) -> RecommendResult:
-        body = {"profile": profile, **recommend_body(top_k, filters, include_raw_data)}
+        body = {"profile": profile, **recommend_body(top_k, filters, include_raw_data, user_id)}
         return _result(await self._client._request("POST", "/recommend/by-profile", json=body))
 
-    async def batch(self, queries: BatchQueries, *, top_k: int = 10) -> BatchRecommendResult:
+    async def batch(
+        self, queries: BatchQueries, *, top_k: int = 10, user_id: Optional[str] = None
+    ) -> BatchRecommendResult:
         response = await self._client._request(
-            "POST", "/recommend/batch", json=_batch_body(queries, top_k)
+            "POST", "/recommend/batch", json=_batch_body(queries, top_k, user_id)
         )
         return BatchRecommendResult.model_validate(
             {**response.json(), "cache": response.headers.get("x-cache")}

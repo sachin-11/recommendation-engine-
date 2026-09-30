@@ -15,6 +15,7 @@ function body(options: RecommendOptions) {
     top_k: options.topK ?? 10,
     filters: options.filters ?? {},
     include_raw_data: options.includeRawData ?? false,
+    ...(options.userId !== undefined && { user_id: options.userId }),
   };
 }
 
@@ -60,12 +61,19 @@ export class Recommend {
   }
 
   /** Up to 20 text queries in one request. */
-  async batch(queries: BatchQuery[], options: Pick<RecommendOptions, "topK"> = {}): Promise<BatchRecommendResult> {
+  async batch(
+    queries: BatchQuery[],
+    options: Pick<RecommendOptions, "topK" | "userId"> = {},
+  ): Promise<BatchRecommendResult> {
     return withCache(
       await this.client.request<Omit<BatchRecommendResult, "cache">>({
         method: "POST",
         url: "/recommend/batch",
-        data: { queries, top_k: options.topK ?? 10 },
+        data: {
+          queries,
+          top_k: options.topK ?? 10,
+          ...(options.userId !== undefined && { user_id: options.userId }),
+        },
       }),
     );
   }

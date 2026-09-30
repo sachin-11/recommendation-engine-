@@ -193,8 +193,9 @@ def test_by_text_body_and_cache_header() -> None:
 def test_by_item_by_profile_batch_and_feedback() -> None:
     recorder = Recorder(httpx.Response(200, json=RESULTS))
     client, _ = make_client(recorder)
-    client.recommend.by_item("job-7", top_k=3)
+    client.recommend.by_item("job-7", top_k=3, user_id="user-42")
     assert recorder.body()["external_id"] == "job-7"
+    assert recorder.body()["user_id"] == "user-42"
     client.recommend.by_profile({"skills": "Python"}, include_raw_data=True)
     assert recorder.body()["profile"] == {"skills": "Python"}
     recorder.responses = [
@@ -208,8 +209,9 @@ def test_by_item_by_profile_batch_and_feedback() -> None:
             },
         )
     ]
-    batch = client.recommend.batch([{"id": "q1", "query": "python"}], top_k=5)
+    batch = client.recommend.batch([{"id": "q1", "query": "python"}], top_k=5, user_id="u1")
     assert batch.query_ids == {"q1": "x"}
+    assert recorder.body()["user_id"] == "u1"
     recorder.responses = [httpx.Response(201, json={})]
     client.recommend.submit_feedback(RESULTS["query_id"], "job-101", "CLICK")
     assert recorder.body() == {

@@ -291,6 +291,18 @@ client.recommend.submit_feedback(results.query_id, "job-101", "APPLY")
 
 Feedback types: `CLICK`, `THUMBS_UP`, `THUMBS_DOWN`, `PURCHASE`, `APPLY`, `IGNORE`.
 
+### Say who the results are for
+
+Add `user_id` to a recommendation request: your own id for the person who will see the results, such as a user id or a hashed email (up to 255 characters). It is optional. Feedback on that query is attributed to the same user, so you do not send it again with feedback. Personalized ranking learns from it.
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/by-text   -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json"   -d '{"query": "senior python developer", "top_k": 10, "user_id": "candidate-8812"}'
+```
+
+In the SDKs it is `userId` (JavaScript) and `user_id` (Python) on every recommend call, batch included.
+
+Every result a query returns is recorded as shown to that user, at its rank, cached responses included. Feedback over those impressions is each item's click-through rate.
+
 ## What's next
 
 - Choose fields for your catalogue: [HR](../guides/hr-domain), [Food](../guides/food-domain), [E-commerce](../guides/ecommerce-domain) or [your own](../guides/custom-domain).
