@@ -17,6 +17,8 @@ export interface RankingConfig {
   popularity?: number;
   /** 0–1: how far a query with a user_id leans toward items that user liked. */
   personalization?: number;
+  /** 0–1: A/B test share of traffic ordered by similarity alone. 0 runs no test. */
+  control_share?: number;
 }
 
 export interface DomainConfig {
@@ -247,6 +249,39 @@ export interface FeedbackSummary {
   days: number;
   total: number;
   by_type: Record<FeedbackType, number>;
+}
+
+export type RankingVariant = "control" | "reranked";
+
+export interface Rate {
+  rate: number | null;
+  /** 95% confidence interval. */
+  low: number | null;
+  high: number | null;
+}
+
+export interface VariantStats {
+  variant: RankingVariant;
+  queries: number;
+  impressions: number;
+  engagement: number;
+  conversions: number;
+  negatives: number;
+  engagement_rate: Rate;
+  conversion_rate: Rate;
+}
+
+export interface RankingExperiment {
+  since: string;
+  days: number;
+  control_share: number;
+  variants: VariantStats[];
+  comparison: {
+    engagement_lift: number | null;
+    engagement_p_value: number | null;
+    conversion_lift: number | null;
+    conversion_p_value: number | null;
+  };
 }
 
 export interface IndexStats {

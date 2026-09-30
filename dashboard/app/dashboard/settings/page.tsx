@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, RefreshCw, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { RankingSettings } from "@/components/account/RankingSettings";
 import { configErrors, DomainConfigEditor } from "@/components/onboarding/DomainConfigEditor";
 import { BatchProgress } from "@/components/items/BatchProgress";
 import { Badge } from "@/components/ui/badge";
@@ -267,6 +268,7 @@ export default function SettingsPage() {
       ) : (
         <div className="space-y-6">
           <DomainConfigSection key={me.updated_at} tenant={me} />
+          <RankingSettings key={`ranking-${me.updated_at}`} tenant={me} />
           <DangerZone tenant={me} />
         </div>
       )}

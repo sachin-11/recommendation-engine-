@@ -8,6 +8,7 @@ import type {
   CacheStatus,
   FeedbackSummary,
   FeedbackType,
+  RankingExperiment,
   RecommendRequest,
   RecommendResponse,
   RecommendResult,
@@ -42,7 +43,17 @@ export const analyticsKeys = {
   usage: (days: number) => ["analytics", "usage", days] as const,
   feedback: (days: number) => ["analytics", "feedback", days] as const,
   tokens: (days: number) => ["analytics", "tokens", days] as const,
+  experiment: (days: number) => ["analytics", "experiment", days] as const,
 };
+
+export function useRankingExperiment(days = 30) {
+  return useQuery({
+    queryKey: analyticsKeys.experiment(days),
+    queryFn: async () =>
+      (await api.get<RankingExperiment>("/analytics/ranking-experiment", { params: { days } })).data,
+    staleTime: FIVE_MINUTES,
+  });
+}
 
 export function useTokenUsage(days = 30) {
   return useQuery({

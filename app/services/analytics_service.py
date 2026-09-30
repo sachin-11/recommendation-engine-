@@ -12,12 +12,20 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.middleware.auth import AuthDep
 from app.models.item import EmbeddingStatus, Item
-from app.models.recommendation_log import QueryType, RecommendationLog
+from app.models.recommendation_impression import RecommendationImpression
+from app.models.recommendation_log import QueryType, RankingVariant, RecommendationLog
 from app.models.tenant import Tenant
 from app.models.token_usage import TokenUsage, UsageSource
 from app.models.user_feedback import FeedbackType, UserFeedback
+from app.schemas.tenant import ranking_config
+from app.services.recommendation.experiment import two_proportion_p_value, wilson_interval
 
 TOP_ITEMS_LIMIT = 10
+FEEDBACK_GROUPS: dict[str, tuple[FeedbackType, ...]] = {
+    "engagement": (FeedbackType.CLICK, FeedbackType.THUMBS_UP),
+    "conversions": (FeedbackType.PURCHASE, FeedbackType.APPLY),
+    "negatives": (FeedbackType.THUMBS_DOWN, FeedbackType.IGNORE),
+}
 
 
 class AnalyticsService:
@@ -70,6 +78,94 @@ class AnalyticsService:
         counts = {feedback_type: 0 for feedback_type in FeedbackType}
         counts.update(dict(rows.tuples().all()))
         return {"since": since, "days": days, "total": sum(counts.values()), "by_type": counts}
+
+    async def ranking_experiment(self, days: int = 30) -> dict[str, Any]:
+        """Engagement and conversion per impression for each ranking variant, and how the
+        reranked variant compares with the similarity-only control."""
+        since = datetime.now(UTC) - timedelta(days=days)
+        logs = RecommendationLog
+        in_period = (logs.tenant_id == self._tenant.id, logs.created_at >= since)
+        counts: dict[str, dict[str, int]] = {
+            v: dict.fromkeys(("queries", "impressions", *FEEDBACK_GROUPS), 0)
+            for v in RankingVariant
+        }
+
+        rows = await self._session.execute(
+            select(logs.ranking_variant, func.count())
+            .where(*in_period)
+            .group_by(logs.ranking_variant)
+        )
+        for variant, n in rows.tuples():
+            if variant not in counts:
+                continue
+            counts[variant]["queries"] = n
+
+        imp = RecommendationImpression
+        rows = await self._session.execute(
+            select(logs.ranking_variant, func.count())
+            .join(imp, imp.recommendation_log_id == logs.id)
+            .where(*in_period)
+            .group_by(logs.ranking_variant)
+        )
+        for variant, n in rows.tuples():
+            if variant not in counts:
+                continue
+            counts[variant]["impressions"] = n
+
+        fb = UserFeedback
+        feedback_rows = await self._session.execute(
+            select(logs.ranking_variant, fb.feedback_type, func.count())
+            .join(fb, fb.recommendation_log_id == logs.id)
+            .where(*in_period)
+            .group_by(logs.ranking_variant, fb.feedback_type)
+        )
+        for variant, feedback_type, n in feedback_rows.tuples():
+            if variant not in counts:
+                continue
+            for group, types in FEEDBACK_GROUPS.items():
+                if feedback_type in types:
+                    counts[variant][group] += n
+
+        def rate(successes: int, trials: int) -> dict[str, float | None]:
+            interval = wilson_interval(successes, trials)
+            return {
+                "rate": min(successes, trials) / trials if trials else None,
+                "low": interval[0] if interval else None,
+                "high": interval[1] if interval else None,
+            }
+
+        def compare(group: str) -> tuple[float | None, float | None]:
+            c, r = counts[RankingVariant.CONTROL], counts[RankingVariant.RERANKED]
+            if not c["impressions"] or not r["impressions"]:
+                return None, None
+            c_rate = min(c[group], c["impressions"]) / c["impressions"]
+            r_rate = min(r[group], r["impressions"]) / r["impressions"]
+            lift = r_rate / c_rate - 1 if c_rate else None
+            p = two_proportion_p_value(r[group], r["impressions"], c[group], c["impressions"])
+            return lift, p
+
+        engagement_lift, engagement_p = compare("engagement")
+        conversion_lift, conversion_p = compare("conversions")
+        return {
+            "since": since,
+            "days": days,
+            "control_share": ranking_config(self._tenant.domain_config).control_share,
+            "variants": [
+                {
+                    "variant": variant,
+                    **c,
+                    "engagement_rate": rate(c["engagement"], c["impressions"]),
+                    "conversion_rate": rate(c["conversions"], c["impressions"]),
+                }
+                for variant, c in counts.items()
+            ],
+            "comparison": {
+                "engagement_lift": engagement_lift,
+                "engagement_p_value": engagement_p,
+                "conversion_lift": conversion_lift,
+                "conversion_p_value": conversion_p,
+            },
+        }
 
     async def usage(self, days: int = 30) -> dict[str, Any]:
         """Daily volume and latency (zero-filled, oldest first), query types, cache hit rate

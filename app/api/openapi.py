@@ -250,6 +250,12 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "getFeedbackSummary",
         "Feedback counts by type for the last `days` days.",
     ),
+    ("get", "/api/v1/analytics/ranking-experiment"): (
+        "getRankingExperiment",
+        "Per ranking variant: queries, impressions, engagement and conversion rates with 95% "
+        "confidence intervals, and the reranked variant's lift over the similarity-only "
+        "control. Set `ranking.control_share` in the domain config to run the test.",
+    ),
     ("get", "/api/v1/analytics/tokens"): (
         "getTokenUsage",
         "OpenAI embedding tokens for the last `days` days: uploads (INGEST) and queries "

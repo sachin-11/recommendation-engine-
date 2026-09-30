@@ -314,7 +314,8 @@ Every few minutes, each item's feedback from the last 30 days is added up per im
   "conversion": 0.5,
   "negative": 0.5,
   "popularity": 0.0,
-  "personalization": 0.2
+  "personalization": 0.2,
+  "control_share": 0.0
 }
 ```
 
@@ -322,7 +323,15 @@ Every few minutes, each item's feedback from the last 30 days is added up per im
 
 `personalization` (0–1) applies to requests with a `user_id`. The query leans toward the items that user clicked, liked, bought or applied to in the last 30 days: 0 ignores their history, 1 matches on it alone. A user with no history gets the same results as an anonymous request. For personalized requests, `score` is the similarity to the blended query.
 
-Set `enabled` to `false` to order by similarity to the query alone, with no feedback or personalization. Saving a domain config without a `ranking` section resets these weights to the defaults above.
+Set `enabled` to `false` to order by similarity to the query alone, with no feedback or personalization.
+
+These weights can also be set in the dashboard under **Settings → Ranking**. Saving ranking needs the Admin role.
+
+### Check that it helps: A/B test
+
+Set `control_share` above 0, for example `0.2`, to serve that share of traffic by similarity alone (the *control*) and the rest with feedback ranking and personalization (*reranked*). A request with a `user_id` is always given the same variant, so each person sees consistent results. Requests without one are assigned at random.
+
+`GET /api/v1/analytics/ranking-experiment?days=30` reports, per variant, the queries, impressions, engagement rate (clicks and thumbs up per impression) and conversion rate (purchases and applies per impression), each with a 95% confidence interval. It also gives the reranked variant's lift over control and a p-value; below 0.05 is usually taken as a real difference. The dashboard shows the same under **Analytics → Ranking experiment**. Set `control_share` back to 0 to end the test. Saving a domain config without a `ranking` section resets these weights to the defaults above.
 
 ## What's next
 

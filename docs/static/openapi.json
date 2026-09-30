@@ -2393,6 +2393,97 @@
         "description": "Feedback counts by type for the last `days` days."
       }
     },
+    "/api/v1/analytics/ranking-experiment": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "summary": "Engagement and conversion per ranking variant (A/B test)",
+        "operationId": "getRankingExperiment",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankingExperimentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Per ranking variant: queries, impressions, engagement and conversion rates with 95% confidence intervals, and the reranked variant's lift over the similarity-only control. Set `ranking.control_share` in the domain config to run the test."
+      }
+    },
     "/api/v1/analytics/usage": {
       "get": {
         "tags": [
@@ -6875,12 +6966,113 @@
             "title": "Personalization",
             "description": "With a user_id, how far the query leans toward items that user liked: 0 ignores their history, 1 matches on history alone.",
             "default": 0.2
+          },
+          "control_share": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Control Share",
+            "description": "A/B test: the share of traffic served by similarity alone (the control), so feedback ranking can be compared against it. Users with a user_id always get the same variant. 0 runs no test.",
+            "default": 0.0
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "RankingConfig",
         "description": "How much user feedback reorders vector-search results. Each weight scales how far\nan item's rate is above or below the workspace average; similarity counts 1."
+      },
+      "RankingExperimentResponse": {
+        "properties": {
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Since"
+          },
+          "days": {
+            "type": "integer",
+            "title": "Days"
+          },
+          "control_share": {
+            "type": "number",
+            "title": "Control Share",
+            "description": "The current setting, 0 when no test runs."
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/VariantStats"
+            },
+            "type": "array",
+            "title": "Variants"
+          },
+          "comparison": {
+            "$ref": "#/components/schemas/VariantComparison"
+          }
+        },
+        "type": "object",
+        "required": [
+          "since",
+          "days",
+          "control_share",
+          "variants",
+          "comparison"
+        ],
+        "title": "RankingExperimentResponse"
+      },
+      "RankingVariant": {
+        "type": "string",
+        "enum": [
+          "control",
+          "reranked"
+        ],
+        "title": "RankingVariant",
+        "description": "How a query's results were ordered."
+      },
+      "RateOut": {
+        "properties": {
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate",
+            "description": "Per impression; null with no impressions."
+          },
+          "low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Low",
+            "description": "95% confidence interval, lower bound."
+          },
+          "high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "High",
+            "description": "95% confidence interval, upper bound."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rate",
+          "low",
+          "high"
+        ],
+        "title": "RateOut"
       },
       "RecommendResponse": {
         "properties": {
@@ -7636,6 +7828,112 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VariantComparison": {
+        "properties": {
+          "engagement_lift": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement Lift",
+            "description": "Reranked engagement rate over control, minus 1 (0.12 = 12% better)."
+          },
+          "engagement_p_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement P Value",
+            "description": "Chance of a difference this large with no real one. Below 0.05 is usually taken as significant."
+          },
+          "conversion_lift": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversion Lift"
+          },
+          "conversion_p_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversion P Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "engagement_lift",
+          "engagement_p_value",
+          "conversion_lift",
+          "conversion_p_value"
+        ],
+        "title": "VariantComparison"
+      },
+      "VariantStats": {
+        "properties": {
+          "variant": {
+            "$ref": "#/components/schemas/RankingVariant"
+          },
+          "queries": {
+            "type": "integer",
+            "title": "Queries"
+          },
+          "impressions": {
+            "type": "integer",
+            "title": "Impressions"
+          },
+          "engagement": {
+            "type": "integer",
+            "title": "Engagement",
+            "description": "CLICK and THUMBS_UP feedback."
+          },
+          "conversions": {
+            "type": "integer",
+            "title": "Conversions",
+            "description": "PURCHASE and APPLY feedback."
+          },
+          "negatives": {
+            "type": "integer",
+            "title": "Negatives",
+            "description": "THUMBS_DOWN and IGNORE feedback."
+          },
+          "engagement_rate": {
+            "$ref": "#/components/schemas/RateOut"
+          },
+          "conversion_rate": {
+            "$ref": "#/components/schemas/RateOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variant",
+          "queries",
+          "impressions",
+          "engagement",
+          "conversions",
+          "negatives",
+          "engagement_rate",
+          "conversion_rate"
+        ],
+        "title": "VariantStats"
       },
       "VerifyEmailRequest": {
         "properties": {

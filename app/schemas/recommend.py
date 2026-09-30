@@ -7,7 +7,7 @@ from typing import Annotated, Any, Self
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.models.item import EmbeddingStatus
-from app.models.recommendation_log import QueryType
+from app.models.recommendation_log import QueryType, RankingVariant
 from app.models.token_usage import UsageSource
 from app.models.user_feedback import FeedbackType
 
@@ -250,3 +250,40 @@ class FeedbackSummary(BaseModel):
     days: int
     total: int
     by_type: dict[FeedbackType, int]
+
+
+class RateOut(BaseModel):
+    rate: float | None = Field(description="Per impression; null with no impressions.")
+    low: float | None = Field(description="95% confidence interval, lower bound.")
+    high: float | None = Field(description="95% confidence interval, upper bound.")
+
+
+class VariantStats(BaseModel):
+    variant: RankingVariant
+    queries: int
+    impressions: int
+    engagement: int = Field(description="CLICK and THUMBS_UP feedback.")
+    conversions: int = Field(description="PURCHASE and APPLY feedback.")
+    negatives: int = Field(description="THUMBS_DOWN and IGNORE feedback.")
+    engagement_rate: RateOut
+    conversion_rate: RateOut
+
+
+class VariantComparison(BaseModel):
+    engagement_lift: float | None = Field(
+        description="Reranked engagement rate over control, minus 1 (0.12 = 12% better)."
+    )
+    engagement_p_value: float | None = Field(
+        description="Chance of a difference this large with no real one. Below 0.05 is "
+        "usually taken as significant."
+    )
+    conversion_lift: float | None
+    conversion_p_value: float | None
+
+
+class RankingExperimentResponse(BaseModel):
+    since: datetime
+    days: int
+    control_share: float = Field(description="The current setting, 0 when no test runs.")
+    variants: list[VariantStats]
+    comparison: VariantComparison

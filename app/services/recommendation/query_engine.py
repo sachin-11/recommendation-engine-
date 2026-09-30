@@ -44,6 +44,7 @@ from app.services.embedding.pinecone_service import (
 )
 from app.services.embedding.text_builder import TextBuilder
 from app.services.recommendation.cache import RecommendationCache
+from app.services.recommendation.experiment import assign_variant
 from app.services.recommendation.filter_builder import FilterBuilder
 from app.services.recommendation.personalization import Taste, liked_items
 from app.services.recommendation.reranker import Reranker, candidate_count, workspace_stats
@@ -108,10 +109,6 @@ def _upstream_errors() -> Iterator[None]:
         ) from exc
     except EmbeddingInputError as exc:
         raise BadRequestError(f"The query text was rejected by the embedding model: {exc}") from exc
-
-
-def _variant(config: RankingConfig) -> RankingVariant:
-    return RankingVariant.RERANKED if config.enabled else RankingVariant.CONTROL
 
 
 def _trace_inputs(**fields: str) -> Any:
@@ -286,8 +283,8 @@ class QueryEngine:
                 ) from exc
 
         config = ranking_config(tenant.domain_config)
-        variant = _variant(config)
-        history = await self._history(tenant, config, user_id)
+        variant = assign_variant(config, tenant.id, user_id)
+        history = await self._history(tenant, config, variant, user_id)
         personal = {"user": user_id} if history else {}
         keys = {
             q.id: self._cache.key(
@@ -306,7 +303,11 @@ class QueryEngine:
         query_tokens: dict[str, int] = {}
         taste: Taste | None = None
         if misses:
-            prior = await workspace_stats(self._session, tenant.id) if config.enabled else None
+            prior = (
+                await workspace_stats(self._session, tenant.id)
+                if variant is RankingVariant.RERANKED
+                else None
+            )
             rerank = prior is not None and prior.has_data
             fetch_k = candidate_count(top_k) if rerank else top_k
             with track_embedding_usage() as usage:
@@ -369,8 +370,8 @@ class QueryEngine:
         toward `taste` when there is one."""
         pinecone_filter = self._filter_builder.build_pinecone_filter(filters, tenant.domain_config)
         config = ranking_config(tenant.domain_config)
-        variant = _variant(config)
-        history = await self._history(tenant, config, user_id)
+        variant = assign_variant(config, tenant.id, user_id)
+        history = await self._history(tenant, config, variant, user_id)
         # A user with no history gets the anonymous results, so shares their cache entry.
         personal = {"user": user_id} if history else {}
 
@@ -405,7 +406,7 @@ class QueryEngine:
                 with _upstream_errors():
                     taste = await self._taste(tenant, config, history)
                     matches = await self._ranked_search(
-                        tenant, top_k, config, lambda k: search(pinecone_filter, k, taste)
+                        tenant, top_k, config, variant, lambda k: search(pinecone_filter, k, taste)
                     )
             finally:
                 # Tokens spent before a Pinecone failure still count.
@@ -423,11 +424,12 @@ class QueryEngine:
         tenant: Tenant,
         top_k: int,
         config: RankingConfig,
+        variant: RankingVariant,
         search: Callable[[int], Awaitable[Matches]],
     ) -> Matches:
-        """The top_k matches, re-ranked by feedback when enabled. A workspace with no
-        stats yet gets plain similarity order without fetching extra candidates."""
-        if not config.enabled:
+        """The top_k matches, re-ranked by feedback in the RERANKED variant. A workspace
+        with no stats yet gets plain similarity order without fetching extra candidates."""
+        if variant is RankingVariant.CONTROL:
             return await search(top_k)
         prior = await workspace_stats(self._session, tenant.id)
         if not prior.has_data:
@@ -436,10 +438,15 @@ class QueryEngine:
         return await self._reranker.rerank(tenant.id, candidates, top_k, config, prior)
 
     async def _history(
-        self, tenant: Tenant, config: RankingConfig, user_id: str | None
+        self,
+        tenant: Tenant,
+        config: RankingConfig,
+        variant: RankingVariant,
+        user_id: str | None,
     ) -> list[str]:
-        """Pinecone ids of the items this user liked, when personalization applies."""
-        if not user_id or not config.enabled or config.personalization <= 0:
+        """Pinecone ids of the items this user liked, when personalization applies: only
+        in the RERANKED variant, so CONTROL is similarity to the query alone."""
+        if not user_id or variant is RankingVariant.CONTROL or config.personalization <= 0:
             return []
         return await liked_items(self._session, tenant.id, user_id)
 

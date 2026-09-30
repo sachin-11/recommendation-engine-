@@ -8,6 +8,7 @@ from app.api.v1.items import AUTH_RESPONSES, PROTECTED
 from app.schemas.recommend import (
     AnalyticsOverview,
     FeedbackSummary,
+    RankingExperimentResponse,
     TokenUsageResponse,
     UsageResponse,
 )
@@ -28,6 +29,16 @@ async def feedback_summary(
     service: AnalyticsServiceDep, days: Annotated[int, Query(ge=1, le=365)] = 30
 ) -> FeedbackSummary:
     return FeedbackSummary.model_validate(await service.feedback_summary(days))
+
+
+@router.get(
+    "/ranking-experiment",
+    summary="Engagement and conversion per ranking variant (A/B test)",
+)
+async def ranking_experiment(
+    service: AnalyticsServiceDep, days: Annotated[int, Query(ge=1, le=90)] = 30
+) -> RankingExperimentResponse:
+    return RankingExperimentResponse.model_validate(await service.ranking_experiment(days))
 
 
 @router.get("/usage", summary="Daily volume, query types and cache hit rate")

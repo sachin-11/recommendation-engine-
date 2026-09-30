@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { OverviewCards, type Stat } from "@/components/analytics/OverviewCards";
+import { RankingExperiment } from "@/components/analytics/RankingExperiment";
 import {
   FeedbackDonut,
   QueryTypeChart,
@@ -307,6 +308,8 @@ export default function AnalyticsPage() {
           </div>
         </>
       )}
+
+      {!empty && <RankingExperiment days={days} />}
 
       <TokenUsageSection days={days} />
     </>
