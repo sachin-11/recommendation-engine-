@@ -5,6 +5,9 @@ Run with:  python -m app.workers.embedding_worker
 It complements the API's background tasks. It picks up items left PENDING when OpenAI
 or Pinecone was down, items whose API process died mid-batch, and large backlogs. Any
 number of workers can run at once; items are claimed atomically.
+
+It also rebuilds item_stats every ITEM_STATS_REFRESH_SECONDS for feedback ranking. A
+Redis lock makes one worker do each refresh however many are running.
 """
 
 import asyncio
@@ -13,6 +16,7 @@ import logging
 import signal
 
 from prometheus_client import Gauge, start_http_server
+from redis.asyncio import Redis
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, engine
@@ -22,6 +26,7 @@ from app.core.tracing import configure_tracing
 from app.services.embedding.openai_embedder import OpenAIEmbedder, get_openai_client
 from app.services.embedding.pinecone_service import get_pinecone_service
 from app.services.embedding.pipeline import EmbeddingPipeline, UpstreamUnavailableError
+from app.services.recommendation.item_stats import refresh_if_due
 
 logging.basicConfig(
     level=settings.LOG_LEVEL,
@@ -41,6 +46,16 @@ LAST_POLL = Gauge(
 )
 
 
+async def refresh_stats(stop: asyncio.Event, redis: Redis) -> None:
+    while not stop.is_set():
+        try:
+            await refresh_if_due(AsyncSessionLocal, redis)
+        except Exception:
+            logger.exception("Item stats refresh failed")
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=settings.ITEM_STATS_REFRESH_SECONDS)
+
+
 async def run(stop: asyncio.Event) -> None:
     configure_sentry("worker")
     configure_tracing()
@@ -53,6 +68,7 @@ async def run(stop: asyncio.Event) -> None:
     logger.info(
         "Embedding worker started (poll every %.1fs)", settings.WORKER_POLL_INTERVAL_SECONDS
     )
+    stats_task = asyncio.create_task(refresh_stats(stop, redis))
     try:
         while not stop.is_set():
             delay = settings.WORKER_POLL_INTERVAL_SECONDS
@@ -73,6 +89,8 @@ async def run(stop: asyncio.Event) -> None:
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(stop.wait(), timeout=delay)
     finally:
+        stop.set()
+        await stats_task
         await redis.aclose()
         await engine.dispose()
         logger.info("Embedding worker stopped")

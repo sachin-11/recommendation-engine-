@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     # Items stuck in PROCESSING longer than this (a crashed worker) are retried.
     WORKER_STALE_AFTER_SECONDS: int = Field(default=600, gt=0)
 
+    # --- Item stats (feedback ranking) ---
+    # The worker rebuilds item_stats from the last ITEM_STATS_WINDOW_DAYS of impressions
+    # and feedback this often. An event's weight halves every ITEM_STATS_HALF_LIFE_DAYS.
+    ITEM_STATS_REFRESH_SECONDS: int = Field(default=300, gt=0)
+    ITEM_STATS_WINDOW_DAYS: int = Field(default=30, gt=0)
+    ITEM_STATS_HALF_LIFE_DAYS: float = Field(default=7.0, gt=0)
+    # Impressions older than this are deleted after each refresh.
+    IMPRESSION_RETENTION_DAYS: int = Field(default=90, gt=0)
+
     # --- Security ---
     SECRET_KEY: SecretStr = Field(min_length=32)
     # Operator key for /api/v1/tenants/*. Unset = those routes are disabled.
