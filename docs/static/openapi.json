@@ -6490,7 +6490,7 @@
               }
             ],
             "title": "Variants",
-            "description": "Settings to compare. Default: vector only, hybrid, and your saved settings."
+            "description": "Settings to compare. Default: vector only, hybrid, hybrid with LLM re-ranking, and your saved settings."
           }
         },
         "additionalProperties": false,
@@ -6590,6 +6590,34 @@
           },
           "ranking": {
             "$ref": "#/components/schemas/RankingConfig"
+          },
+          "latency_ms_avg": {
+            "type": "number",
+            "title": "Latency Ms Avg",
+            "description": "Per query, without the result cache."
+          },
+          "latency_ms_p95": {
+            "type": "number",
+            "title": "Latency Ms P95"
+          },
+          "rerank_tokens": {
+            "type": "integer",
+            "title": "Rerank Tokens",
+            "description": "OpenAI chat tokens spent by LLM re-ranking."
+          },
+          "rerank_cost_usd": {
+            "type": "number",
+            "title": "Rerank Cost Usd"
+          },
+          "llm_cached": {
+            "type": "integer",
+            "title": "Llm Cached",
+            "description": "Queries whose LLM answer came from its cache (no tokens, little latency)."
+          },
+          "llm_fallbacks": {
+            "type": "integer",
+            "title": "Llm Fallbacks",
+            "description": "Queries where the LLM stage failed or timed out and kept the prior order."
           }
         },
         "type": "object",
@@ -6598,7 +6626,13 @@
           "recall",
           "mrr",
           "name",
-          "ranking"
+          "ranking",
+          "latency_ms_avg",
+          "latency_ms_p95",
+          "rerank_tokens",
+          "rerank_cost_usd",
+          "llm_cached",
+          "llm_fallbacks"
         ],
         "title": "EvalVariantResult"
       },
@@ -7801,6 +7835,30 @@
               }
             ],
             "title": "Keyword"
+          },
+          "llm_rerank": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Rerank"
+          },
+          "llm_candidates": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 20.0,
+                "minimum": 2.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Candidates"
           }
         },
         "additionalProperties": false,

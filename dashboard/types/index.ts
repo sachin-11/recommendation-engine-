@@ -394,6 +394,15 @@ export interface EvalMetrics {
 export interface EvalVariantResult extends EvalMetrics {
   name: string;
   ranking: Required<RankingConfig>;
+  /** Per query, without the result cache. */
+  latency_ms_avg: number;
+  latency_ms_p95: number;
+  rerank_tokens: number;
+  rerank_cost_usd: number;
+  /** Queries whose LLM answer came from its cache. */
+  llm_cached: number;
+  /** Queries where the LLM stage failed or timed out. */
+  llm_fallbacks: number;
 }
 
 export interface EvalQueryResult {

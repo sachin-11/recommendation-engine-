@@ -78,6 +78,7 @@ class Recommendation:
     rerank_tokens: int = 0
     rerank_cost_usd: float = 0.0
     rerank_fallback: str | None = None
+    rerank_cached: bool = False
 
 
 @dataclass
@@ -137,6 +138,7 @@ def _rerank_fields(outcome: LLMRerankResult | None) -> dict[str, Any]:
         "rerank_tokens": outcome.prompt_tokens + outcome.completion_tokens,
         "rerank_cost_usd": outcome.cost_usd,
         "rerank_fallback": outcome.fallback,
+        "rerank_cached": outcome.cached,
     }
 
 
@@ -219,9 +221,11 @@ class QueryEngine:
         include_raw_data: bool = False,
         user_id: str | None = None,
         ranking: RankingConfig | None = None,
+        use_cache: bool = True,
     ) -> Recommendation:
-        """`ranking` replaces the workspace's ranking settings for this call only, e.g. to
-        compare settings in an offline evaluation without saving them."""
+        """`ranking` replaces the workspace's ranking settings for this call only, and
+        `use_cache=False` skips the result cache: both for offline evaluation, which compares
+        settings without saving them and measures uncached latency."""
         return await self._recommend(
             tenant,
             QueryType.TEXT,
@@ -235,6 +239,7 @@ class QueryEngine:
             ),
             ranking,
             llm_query=query_text,
+            use_cache=use_cache,
         )
 
     @traced(
@@ -297,6 +302,17 @@ class QueryEngine:
             ),
             llm_query=text,
         )
+
+    async def embed_queries(self, tenant: Tenant, texts: list[str]) -> None:
+        """Embed query texts ahead of time, into the embedding cache (tokens are recorded
+        as query usage). Offline evaluation does this so its timings measure ranking, not
+        whichever variant happened to embed each query first."""
+        with track_embedding_usage() as usage:
+            try:
+                with _upstream_errors():
+                    await self._embedder.embed_batch(texts)
+            finally:
+                await record_embedding_usage(self._session, tenant.id, UsageSource.QUERY, usage)
 
     @traced(
         "recommend.batch",
@@ -446,6 +462,7 @@ class QueryEngine:
         search: Callable[[dict[str, Any], int, SearchPlan], Awaitable[Matches]],
         ranking: RankingConfig | None = None,
         llm_query: str | None = None,
+        use_cache: bool = True,
     ) -> Recommendation:
         """`search(pinecone_filter, k, plan)` returns the `k` best items for the plan.
         `llm_query` is the text the LLM stage judges results against (text and profile
@@ -477,7 +494,7 @@ class QueryEngine:
 
         # raw_data can be large and changes often; those responses are never cached.
         key = None
-        if not include_raw_data:
+        if use_cache and not include_raw_data:
             key = self._cache.key(
                 tenant.id,
                 {

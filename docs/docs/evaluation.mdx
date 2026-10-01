@@ -32,12 +32,13 @@ curl -X POST $RECO_API/api/v1/evaluation/run \
   -d '{"k": 10}'
 ```
 
-By default it compares three settings:
+By default it compares four settings:
 
 | Variant | What it is |
 |---|---|
 | `vector` | Vector search alone: similarity to the query |
 | `hybrid` | Vector plus keyword search (your `keyword` weight, or 0.3), no feedback |
+| `llm` | `hybrid`, then LLM re-ranking of the top results |
 | `current` | Your saved ranking settings |
 
 To compare your own, pass up to five variants. Each `ranking` changes only the fields it names; the rest keep your saved values:
@@ -52,7 +53,7 @@ To compare your own, pass up to five variants. Each `ranking` changes only the f
 }
 ```
 
-A run saves no settings, logs no queries and does not count toward your monthly limit. Query embeddings are cached, so running again is cheap.
+A run saves no settings, logs no queries and does not count toward your monthly limit. It skips the result cache so latencies are real, and embeds every query before timing anything, so no variant pays for embedding. LLM answers stay cached for an hour: running again is cheap, and the report says how many answers came from that cache.
 
 ## 3. Read the results
 
@@ -63,6 +64,8 @@ Each variant gets three scores between 0 and 1, averaged over the golden set. Hi
 | **NDCG@k** | Are the most relevant items at the top? 1 means the best possible order. |
 | **Recall@k** | How many of the relevant items appear in the top k at all? |
 | **MRR** | How soon does the first relevant item appear? 1 means first, 0.5 second. |
+
+Each variant also reports its latency per query (average and 95th percentile) and, for LLM re-ranking, the tokens and cost of the run and how often the model timed out and the previous order was kept. Quality, latency and cost together are the decision: LLM re-ranking usually scores best and is also seconds slower.
 
 `per_query` shows every query's scores and returned items per variant. Read the queries where a variant loses: they show what it gets wrong, which an average hides.
 

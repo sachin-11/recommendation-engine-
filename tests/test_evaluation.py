@@ -103,7 +103,7 @@ async def test_invalid_golden_queries_are_422(
 # --- Runs ---
 
 
-async def test_default_run_compares_vector_hybrid_and_current(
+async def test_default_run_compares_vector_hybrid_llm_and_current(
     client: AsyncClient, hr: TenantAuth, session_factory: async_sessionmaker[AsyncSession]
 ) -> None:
     # "spark": job-3 is the only match, but not the nearest vector (see test_hybrid).
@@ -118,15 +118,22 @@ async def test_default_run_compares_vector_hybrid_and_current(
     assert response.status_code == 200, response.text
     body = response.json()
     by_name = {v["name"]: v for v in body["variants"]}
-    assert list(by_name) == ["vector", "hybrid", "current"]
+    assert list(by_name) == ["vector", "hybrid", "llm", "current"]
     assert (body["k"], body["queries"]) == (1, 1)
     assert by_name["vector"]["recall"] == 0.0
     assert by_name["hybrid"]["ranking"]["keyword"] == 1  # the saved weight
     assert by_name["hybrid"]["ranking"]["engagement"] == 0
     # The saved settings are evaluated as such, not as the A/B control.
     assert by_name["current"]["ranking"]["control_share"] == 0
-    for name in ("hybrid", "current"):
+    for name in ("hybrid", "llm", "current"):
         assert (by_name[name]["ndcg"], by_name[name]["recall"], by_name[name]["mrr"]) == (1, 1, 1)
+    # Only the llm variant calls the model, and its cost is reported.
+    assert by_name["llm"]["ranking"]["llm_rerank"] is True
+    assert by_name["hybrid"]["ranking"]["llm_rerank"] is False
+    assert by_name["llm"]["rerank_tokens"] > 0 and by_name["llm"]["rerank_cost_usd"] > 0
+    assert (by_name["llm"]["llm_cached"], by_name["llm"]["llm_fallbacks"]) == (0, 0)
+    assert all(by_name[n]["rerank_tokens"] == 0 for n in ("vector", "hybrid", "current"))
+    assert all(v["latency_ms_avg"] > 0 and v["latency_ms_p95"] > 0 for v in by_name.values())
     row = body["per_query"][0]
     assert row["top"]["hybrid"] == ["job-3"]
     assert row["by_variant"]["vector"]["recall"] == 0.0
@@ -167,3 +174,21 @@ async def test_run_errors(client: AsyncClient, hr: TenantAuth) -> None:
     )
 
     assert (empty.status_code, duplicate.status_code, bad.status_code) == (400, 400, 422)
+
+
+async def test_reruns_skip_the_result_cache_but_reuse_llm_answers(
+    client: AsyncClient, hr: TenantAuth, openai_client: Any, vector_store: Any
+) -> None:
+    await _add(client, hr, "spark", {"job-3": 3})
+    llm_only = {"k": 1, "variants": [{"name": "llm", "ranking": {"llm_rerank": True}}]}
+
+    first = (await client.post(f"{EVAL}/run", json=llm_only, headers=hr.headers)).json()
+    searches = len(vector_store.queries)
+    second = (await client.post(f"{EVAL}/run", json=llm_only, headers=hr.headers)).json()
+
+    assert first["variants"][0]["llm_cached"] == 0
+    assert second["variants"][0]["llm_cached"] == 1
+    assert second["variants"][0]["rerank_tokens"] == 0
+    assert len(openai_client.chat.completions.calls) == 1
+    # The second run searched again rather than returning cached results.
+    assert len(vector_store.queries) > searches

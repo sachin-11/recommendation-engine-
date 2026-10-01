@@ -28,8 +28,21 @@ const METRICS: { key: keyof EvalMetrics; label: string; hint: string }[] = [
 const VARIANT_HINTS: Record<string, string> = {
   vector: "Similarity alone",
   hybrid: "Vector + keyword, no feedback",
+  llm: "Hybrid + LLM re-ranking",
   current: "Your saved settings",
 };
+
+function formatCost(usd: number) {
+  if (usd === 0) return "—";
+  return usd < 0.01 ? `$${usd.toPrecision(2)}` : `$${usd.toFixed(2)}`;
+}
+
+function LlmNote({ variant }: { variant: EvalRun["variants"][number] }) {
+  const notes = [];
+  if (variant.llm_cached) notes.push(`${variant.llm_cached} cached`);
+  if (variant.llm_fallbacks) notes.push(`${variant.llm_fallbacks} fell back`);
+  return notes.length ? <p className="text-xs text-muted-foreground">{notes.join(" · ")}</p> : null;
+}
 
 /** "job_101:3" or "job_101" (grade 1) -> [id, grade]; null when the grade is not 1–3. */
 function parseTag(tag: string): [string, number] | null {
@@ -210,7 +223,7 @@ function Results({ run }: { run: EvalRun }) {
           <CardTitle className="text-base">Results</CardTitle>
           <CardDescription>
             Averages over {run.queries} {run.queries === 1 ? "query" : "queries"}, top {run.k} results. Higher is
-            better; the best per metric is bold.
+            better; the best per metric is bold. Cost is for the whole run; a rerun reuses cached LLM answers.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-0">
@@ -223,6 +236,12 @@ function Results({ run }: { run: EvalRun }) {
                     {m.label}@{run.k}
                   </TableHead>
                 ))}
+                <TableHead className="text-right" title="Per query, without the result cache">
+                  Latency avg / p95
+                </TableHead>
+                <TableHead className="pr-5 text-right" title="OpenAI chat tokens for LLM re-ranking">
+                  LLM cost
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -238,6 +257,13 @@ function Results({ run }: { run: EvalRun }) {
                   {METRICS.map(({ key }) => (
                     <MetricCell key={key} value={v[key]} best={v[key] === best[key] && best[key] > 0} />
                   ))}
+                  <TableCell className="text-right tabular-nums">
+                    {Math.round(v.latency_ms_avg)} / {Math.round(v.latency_ms_p95)} ms
+                  </TableCell>
+                  <TableCell className="pr-5 text-right tabular-nums">
+                    {formatCost(v.rerank_cost_usd)}
+                    <LlmNote variant={v} />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

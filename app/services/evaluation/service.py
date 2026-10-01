@@ -4,10 +4,13 @@ A run asks the query engine for every golden query once per variant (a set of ra
 settings), and scores each answer with NDCG, recall and MRR. Settings are passed to the
 engine for the call only; nothing is saved. Runs serve no user: they ask as no one (no
 user_id, so no personalization), never sit in an A/B control group, and are not logged
-or counted against the monthly query limit. Query embeddings are cached, so a repeat run
-costs little.
+or counted against the monthly query limit. The result cache is skipped so latencies are
+real; query embeddings and LLM answers stay cached, so a repeat run costs little (the
+report counts the cached LLM answers).
 """
 
+import math
+import time
 import uuid
 from statistics import fmean
 from typing import Annotated, Any
@@ -31,18 +34,28 @@ DEFAULT_KEYWORD = 0.3
 
 
 def default_variants(saved: RankingConfig) -> list[EvalVariantIn]:
-    """Vector search alone, hybrid search without feedback, and the saved settings."""
-    no_feedback = {"engagement": 0, "conversion": 0, "negative": 0, "popularity": 0}
+    """Vector search alone, hybrid search without feedback, the same with LLM
+    re-ranking, and the saved settings."""
+    hybrid: dict[str, Any] = {
+        "enabled": True,
+        "keyword": saved.keyword or DEFAULT_KEYWORD,
+        "engagement": 0,
+        "conversion": 0,
+        "negative": 0,
+        "popularity": 0,
+    }
     return [
         EvalVariantIn(name="vector", ranking=RankingOverride(enabled=False)),
-        EvalVariantIn(
-            name="hybrid",
-            ranking=RankingOverride(
-                enabled=True, keyword=saved.keyword or DEFAULT_KEYWORD, **no_feedback
-            ),
-        ),
+        EvalVariantIn(name="hybrid", ranking=RankingOverride(**hybrid, llm_rerank=False)),
+        EvalVariantIn(name="llm", ranking=RankingOverride(**hybrid, llm_rerank=True)),
         EvalVariantIn(name="current", ranking=RankingOverride()),
     ]
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    """Nearest-rank percentile."""
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(pct / 100 * len(ordered)) - 1)]
 
 
 def resolve(saved: RankingConfig, override: RankingOverride) -> RankingConfig:
@@ -116,14 +129,24 @@ class EvaluationService:
             {"id": q.id, "query": q.query, "relevant": q.relevant, "by_variant": {}, "top": {}}
             for q in queries
         ]
+        # Embed every query once up front, so each variant's timing is like for like.
+        await engine.embed_queries(self._tenant, [q.query for q in queries])
         results = []
         for variant in chosen:
             config = resolve(saved, variant.ranking)
             scores = []
+            latencies: list[float] = []
+            cost = {"rerank_tokens": 0, "rerank_cost_usd": 0.0, "llm_cached": 0, "llm_fallbacks": 0}
             for query, row in zip(queries, per_query, strict=True):
+                started = time.perf_counter()
                 answer = await engine.recommend_by_text(
-                    query.query, self._tenant, top_k=k, ranking=config
+                    query.query, self._tenant, top_k=k, ranking=config, use_cache=False
                 )
+                latencies.append((time.perf_counter() - started) * 1000)
+                cost["rerank_tokens"] += answer.rerank_tokens
+                cost["rerank_cost_usd"] += answer.rerank_cost_usd
+                cost["llm_cached"] += answer.rerank_cached
+                cost["llm_fallbacks"] += answer.rerank_fallback is not None
                 ranked = [r["external_id"] for r in answer.results]
                 metrics = {
                     "ndcg": ndcg_at_k(ranked, query.relevant, k),
@@ -138,6 +161,9 @@ class EvaluationService:
                     "name": variant.name,
                     "ranking": config,
                     **{m: fmean(s[m] for s in scores) for m in ("ndcg", "recall", "mrr")},
+                    "latency_ms_avg": fmean(latencies),
+                    "latency_ms_p95": _percentile(latencies, 95),
+                    **cost,
                 }
             )
         return {"k": k, "queries": len(queries), "variants": results, "per_query": per_query}

@@ -58,6 +58,8 @@ class RankingOverride(BaseModel):
     popularity: Weight | None = None
     personalization: Fraction | None = None
     keyword: Fraction | None = None
+    llm_rerank: bool | None = None
+    llm_candidates: Annotated[int, Field(ge=2, le=20)] | None = None
 
 
 class EvalVariantIn(BaseModel):
@@ -86,7 +88,8 @@ class EvalRunRequest(BaseModel):
         default=None,
         min_length=1,
         max_length=MAX_VARIANTS,
-        description="Settings to compare. Default: vector only, hybrid, and your saved settings.",
+        description="Settings to compare. Default: vector only, hybrid, hybrid with LLM "
+        "re-ranking, and your saved settings.",
     )
 
 
@@ -99,6 +102,16 @@ class Metrics(BaseModel):
 class EvalVariantResult(Metrics):
     name: str
     ranking: RankingConfig
+    latency_ms_avg: float = Field(description="Per query, without the result cache.")
+    latency_ms_p95: float
+    rerank_tokens: int = Field(description="OpenAI chat tokens spent by LLM re-ranking.")
+    rerank_cost_usd: float
+    llm_cached: int = Field(
+        description="Queries whose LLM answer came from its cache (no tokens, little latency)."
+    )
+    llm_fallbacks: int = Field(
+        description="Queries where the LLM stage failed or timed out and kept the prior order."
+    )
 
 
 class EvalQueryResult(BaseModel):
