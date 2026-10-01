@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -101,8 +102,10 @@ async def test_a_failing_summary_keeps_the_results(
     assert events[1][1]["results"]
 
 
-async def test_without_a_model_there_is_no_summary(client: AsyncClient, hr: TenantAuth) -> None:
-    client._transport.app.dependency_overrides[get_summarizer] = lambda: Summarizer(None)  # type: ignore[attr-defined]
+async def test_without_a_model_there_is_no_summary(
+    app: FastAPI, client: AsyncClient, hr: TenantAuth
+) -> None:
+    app.dependency_overrides[get_summarizer] = lambda: Summarizer(None)
 
     events = parse_events((await _stream(client, hr)).text)
 

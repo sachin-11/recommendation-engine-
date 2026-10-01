@@ -423,3 +423,21 @@ export interface EvalRun {
   variants: EvalVariantResult[];
   per_query: EvalQueryResult[];
 }
+
+// --- Asking in plain language ---
+
+export interface AskInterpretation {
+  search_text: string;
+  /** Filters read from the question, in the API's filter form. */
+  filters: Record<string, unknown>;
+  /** Constraints that could not be applied, e.g. "location: no items with 'Hyderabad'". */
+  ignored: string[];
+  /** Set when the question could not be read; it was then searched as written. */
+  fallback?: string;
+}
+
+export interface AskResults extends RecommendResponse {
+  /** The filters matched nothing, so these results are without them. */
+  relaxed: boolean;
+  understand_tokens: number;
+}

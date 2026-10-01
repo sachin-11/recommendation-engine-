@@ -279,7 +279,7 @@ The response is a normal recommendation response plus what was understood:
 "relaxed": false
 ```
 
-Show `interpretation` to the user so they can see, and correct, what was searched. The model is shown the values your items actually have, and its answer is checked: a field you do not filter on, or a value no item has, is not applied but listed in `ignored`, e.g. `location: no items with 'Hyderabad'`. If the filters together match nothing, results are returned without them and `relaxed` is `true`. If the model is unavailable, the question is searched as written. A question costs one model call (about 1–2 seconds, cached for an hour) on top of a normal search, and is logged with query type `ASK`.
+Show `interpretation` to the user so they can see, and correct, what was searched. The dashboard's **Playground → Ask** tab does exactly this: it streams the answer, shows the filters as chips you can remove, and lists what was not applied. The model is shown the values your items actually have, and its answer is checked: a field you do not filter on, or a value no item has, is not applied but listed in `ignored`, e.g. `location: no items with 'Hyderabad'`. If the filters together match nothing, results are returned without them and `relaxed` is `true`. If the model is unavailable, the question is searched as written. A question costs one model call (about 1–2 seconds, cached for an hour) on top of a normal search, and is logged with query type `ASK`.
 
 #### Stream results and a written answer
 

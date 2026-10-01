@@ -33,6 +33,7 @@ os.environ["SMTP_SECURITY"] = "starttls"
 
 import fakeredis
 import pytest
+from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
@@ -141,13 +142,15 @@ def pipeline(
 
 
 @pytest.fixture
-async def client(
+def app(
     session_factory: async_sessionmaker[AsyncSession],
     redis: fakeredis.FakeAsyncRedis,
     embedder: OpenAIEmbedder,
     vector_store: FakeVectorStore,
     openai_client: FakeOpenAIClient,
-) -> AsyncIterator[AsyncClient]:
+) -> FastAPI:
+    """The API with fakes in place of Postgres sessions, Redis, OpenAI and Pinecone.
+    Tests may add their own dependency_overrides."""
     app = create_app()
 
     async def _get_db() -> AsyncIterator[AsyncSession]:
@@ -174,7 +177,11 @@ async def client(
         redis,
         timeout=0.5,
     )
+    return app
 
+
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     # ASGITransport does not run the lifespan, so no real DB/Redis connections are attempted.
     # It also awaits background tasks before returning, so async batches finish in-request.
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
