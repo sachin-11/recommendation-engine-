@@ -2021,6 +2021,123 @@
         "description": "Items matching a profile, e.g. a candidate's skills and experience. Every profile field is used, whatever its name; fields matching your searchable fields come first."
       }
     },
+    "/api/v1/recommend/ask": {
+      "post": {
+        "tags": [
+          "Recommendations"
+        ],
+        "summary": "Recommend items for a question in plain language",
+        "operationId": "askRecommendations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filters or query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Monthly recommendation limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "OpenAI or Pinecone unavailable or timed out (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Ask in plain language, e.g. *remote python job, 3 to 5 years, Delhi or Pune is fine*. A language model reads the question into search text and filters on your `filter_fields`, using only values your items have; `interpretation` shows what it understood and what it could not apply. When the filters match nothing, results are returned without them (`relaxed: true`). Logged as query type ASK."
+      }
+    },
     "/api/v1/recommend/batch": {
       "post": {
         "tags": [
@@ -5639,6 +5756,120 @@
         "title": "ApiKeyResponse",
         "description": "Safe representation of a key: never includes the plain key or its hash."
       },
+      "AskRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "default": 10
+          },
+          "include_raw_data": {
+            "type": "boolean",
+            "title": "Include Raw Data",
+            "description": "Include each item's full uploaded data (never cached).",
+            "default": false
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1,
+                "description": "Your own id for the person who will see these results, e.g. a user id or a hashed email. Optional. Feedback on this query is attributed to the same user, and results lean toward items they liked (domain_config.ranking.personalization)."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "title": "AskRequest",
+        "example": {
+          "question": "remote python job, 3 to 5 years, Delhi or Pune is fine too",
+          "top_k": 10,
+          "user_id": "candidate-8812"
+        }
+      },
+      "AskResponse": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationOut"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "query_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Query Id",
+            "description": "Send this back with feedback on a result."
+          },
+          "latency_ms": {
+            "type": "integer",
+            "title": "Latency Ms"
+          },
+          "embedding_tokens": {
+            "type": "integer",
+            "title": "Embedding Tokens",
+            "description": "OpenAI tokens used to embed this query (0 when served from cache)."
+          },
+          "rerank_tokens": {
+            "type": "integer",
+            "title": "Rerank Tokens",
+            "description": "OpenAI chat tokens used by LLM re-ranking (0 when off or cached).",
+            "default": 0
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "interpretation": {
+            "$ref": "#/components/schemas/InterpretationOut"
+          },
+          "relaxed": {
+            "type": "boolean",
+            "title": "Relaxed",
+            "description": "True when the filters matched nothing, so results are without them."
+          },
+          "understand_tokens": {
+            "type": "integer",
+            "title": "Understand Tokens",
+            "description": "OpenAI chat tokens used to read the question (0 when cached)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "results",
+          "total",
+          "query_id",
+          "latency_ms",
+          "embedding_tokens",
+          "request_id",
+          "interpretation",
+          "relaxed",
+          "understand_tokens"
+        ],
+        "title": "AskResponse"
+      },
       "AsyncUploadResponse": {
         "properties": {
           "batch_id": {
@@ -6887,6 +7118,48 @@
         ],
         "title": "IndexStatsResponse"
       },
+      "InterpretationOut": {
+        "properties": {
+          "search_text": {
+            "type": "string",
+            "title": "Search Text",
+            "description": "What was searched for."
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters",
+            "description": "Filters read from the question, as applied."
+          },
+          "ignored": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ignored",
+            "description": "Constraints in the question that could not be applied, e.g. a value no item has."
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback",
+            "description": "Set when the question could not be read (timeout, error): the whole question was then searched as text, without filters."
+          }
+        },
+        "type": "object",
+        "required": [
+          "search_text",
+          "filters",
+          "ignored"
+        ],
+        "title": "InterpretationOut"
+      },
       "InvitationInfo": {
         "properties": {
           "workspace_name": {
@@ -7620,7 +7893,8 @@
         "enum": [
           "TEXT",
           "ITEM_ID",
-          "PROFILE"
+          "PROFILE",
+          "ASK"
         ],
         "title": "QueryType"
       },

@@ -3,7 +3,7 @@
 export type DomainType = "HR" | "FOOD" | "ECOMMERCE" | "EDTECH" | "CUSTOM";
 export type EmbeddingStatus = "PENDING" | "PROCESSING" | "DONE" | "FAILED";
 export type BatchStatus = "PENDING" | "PROCESSING" | "DONE" | "PARTIAL_FAIL";
-export type QueryType = "TEXT" | "ITEM_ID" | "PROFILE";
+export type QueryType = "TEXT" | "ITEM_ID" | "PROFILE" | "ASK";
 export type FeedbackType = "CLICK" | "THUMBS_UP" | "THUMBS_DOWN" | "PURCHASE" | "APPLY" | "IGNORE";
 export type CacheStatus = "HIT" | "MISS" | "BYPASS" | "PARTIAL";
 export type Role = "VIEWER" | "DEVELOPER" | "ADMIN" | "OWNER";

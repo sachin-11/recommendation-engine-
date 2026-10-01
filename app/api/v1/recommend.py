@@ -2,29 +2,36 @@
 
 import time
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.v1.items import AUTH_RESPONSES, PROTECTED
 from app.core.database import get_db, get_session_factory
 from app.core.metrics import RECO_LATENCY, RECO_REQUESTS
+from app.core.redis_client import get_redis
 from app.middleware.auth import AuthDep
+from app.models.recommendation_log import QueryType
 from app.schemas.common import ErrorResponse
 from app.schemas.recommend import (
+    AskRequest,
+    AskResponse,
     BatchRecommendRequest,
     BatchRecommendResponse,
     FeedbackRequest,
     FeedbackResponse,
+    InterpretationOut,
     ItemRecommendRequest,
     ProfileRecommendRequest,
     RecommendResponse,
     TextRecommendRequest,
 )
-from app.services.recommendation.dependencies import QueryEngineDep
+from app.services.recommendation.dependencies import QueryEngineDep, QueryUnderstandingDep
 from app.services.recommendation.query_engine import BatchQuery, Recommendation
+from app.services.recommendation.query_understanding import cached_profiles
 from app.services.recommendation.tracking import (
     build_impressions,
     build_log,
@@ -220,6 +227,69 @@ async def recommend_by_profile(
         payload.user_id,
     )
     return respond.single(recommendation, payload.user_id)
+
+
+@router.post(
+    "/ask",
+    summary="Recommend items for a question in plain language",
+    responses=_QUERY_RESPONSES,
+    response_model_exclude_none=True,
+)
+async def ask(
+    payload: AskRequest,
+    auth: AuthDep,
+    engine: QueryEngineDep,
+    understanding: QueryUnderstandingDep,
+    respond: ResponderDep,
+    limits: WorkspaceLimitsDep,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
+) -> AskResponse:
+    await limits.consume_queries()
+    tenant = auth.tenant
+    profiles = await cached_profiles(redis, session, tenant)
+    meaning = await understanding.interpret(payload.question, profiles, tenant.domain_config)
+
+    async def search(filters: dict[str, Any]) -> Recommendation:
+        return await engine.recommend_by_text(
+            meaning.search_text,
+            tenant,
+            payload.top_k,
+            filters,
+            payload.include_raw_data,
+            payload.user_id,
+        )
+
+    recommendation = await search(meaning.filters)
+    # Filters that match nothing help no one: show the closest items without them.
+    relaxed = bool(meaning.filters) and not recommendation.results
+    if relaxed:
+        recommendation = await search({})
+    recommendation.query_type = QueryType.ASK
+    recommendation.query_input = {"question": payload.question, "query": meaning.search_text}
+    log.info(
+        "question_understood",
+        tenant_id=str(tenant.id),
+        filters=meaning.filters,
+        ignored=meaning.ignored,
+        fallback=meaning.fallback,
+        cached=meaning.cached,
+        understand_tokens=meaning.prompt_tokens + meaning.completion_tokens,
+        understand_cost_usd=meaning.cost_usd,
+        relaxed=relaxed,
+    )
+    response = respond.single(recommendation, payload.user_id)
+    return AskResponse(
+        **response.model_dump(),
+        interpretation=InterpretationOut(
+            search_text=meaning.search_text,
+            filters=meaning.filters,
+            ignored=meaning.ignored,
+            fallback=meaning.fallback,
+        ),
+        relaxed=relaxed,
+        understand_tokens=meaning.prompt_tokens + meaning.completion_tokens,
+    )
 
 
 @router.post(

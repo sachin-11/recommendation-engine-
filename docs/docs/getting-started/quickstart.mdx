@@ -258,6 +258,29 @@ Example response (scores differ with your data):
 
 `score` is cosine similarity. Results come in `rank` order, which is similarity adjusted by feedback: items people click, buy or apply to more than your average move up, and items they dismiss move down (see [Send feedback](#5-send-feedback)). So a result can outrank one with a higher `score`. Items with no feedback yet keep their similarity order. `score_label` buckets it: above 0.65 **Excellent**, above 0.50 **Good**, above 0.35 **Fair**, otherwise **Weak** (calibrated on `text-embedding-3-small`, where short queries score about 0.45–0.75 for relevant items). Identical queries are cached for 5 minutes (`X-Cache: HIT`).
 
+### Ask in plain language
+
+Your users do not write filters; they write *remote python job, 3 to 5 years, Delhi or Pune is fine*. Send that to `/recommend/ask` and a language model reads it into search text and filters on your `filter_fields`:
+
+```bash
+curl -X POST $RECO_API/api/v1/recommend/ask \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"question": "remote python job, Delhi or Pune is fine too", "top_k": 10}'
+```
+
+The response is a normal recommendation response plus what was understood:
+
+```json
+"interpretation": {
+  "search_text": "python developer",
+  "filters": { "location": ["Remote", "Delhi", "Pune"] },
+  "ignored": []
+},
+"relaxed": false
+```
+
+Show `interpretation` to the user so they can see, and correct, what was searched. The model is shown the values your items actually have, and its answer is checked: a field you do not filter on, or a value no item has, is not applied but listed in `ignored`, e.g. `location: no items with 'Hyderabad'`. If the filters together match nothing, results are returned without them and `relaxed` is `true`. If the model is unavailable, the question is searched as written. A question costs one model call (about 1–2 seconds, cached for an hour) on top of a normal search, and is logged with query type `ASK`.
+
 ## 5. Send feedback
 
 When a user clicks, applies, buys or dismisses a result, report it with the `query_id`. This data is collected to improve ranking.

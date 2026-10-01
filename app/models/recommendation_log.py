@@ -14,6 +14,7 @@ class QueryType(StrEnum):
     TEXT = "TEXT"
     ITEM_ID = "ITEM_ID"
     PROFILE = "PROFILE"
+    ASK = "ASK"  # a question in plain language (POST /recommend/ask)
 
 
 class RankingVariant(StrEnum):

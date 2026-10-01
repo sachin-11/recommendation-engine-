@@ -123,6 +123,52 @@ class RecommendResponse(BaseModel):
     request_id: str
 
 
+class AskRequest(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "question": "remote python job, 3 to 5 years, Delhi or Pune is fine too",
+                "top_k": 10,
+                "user_id": "candidate-8812",
+            }
+        },
+    )
+
+    question: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
+    ]
+    top_k: TopK = 10
+    include_raw_data: bool = Field(
+        default=False, description="Include each item's full uploaded data (never cached)."
+    )
+    user_id: EndUserId | None = None
+
+
+class InterpretationOut(BaseModel):
+    search_text: str = Field(description="What was searched for.")
+    filters: dict[str, Any] = Field(description="Filters read from the question, as applied.")
+    ignored: list[str] = Field(
+        description="Constraints in the question that could not be applied, e.g. a value "
+        "no item has."
+    )
+    fallback: str | None = Field(
+        default=None,
+        description="Set when the question could not be read (timeout, error): the whole "
+        "question was then searched as text, without filters.",
+    )
+
+
+class AskResponse(RecommendResponse):
+    interpretation: InterpretationOut
+    relaxed: bool = Field(
+        description="True when the filters matched nothing, so results are without them."
+    )
+    understand_tokens: int = Field(
+        description="OpenAI chat tokens used to read the question (0 when cached)."
+    )
+
+
 class BatchQueryIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -13,6 +13,7 @@ from app.services.embedding.openai_embedder import OpenAIEmbedder, get_openai_cl
 from app.services.recommendation.cache import RecommendationCache
 from app.services.recommendation.llm_reranker import LLMReranker
 from app.services.recommendation.query_engine import QueryEngine
+from app.services.recommendation.query_understanding import QueryUnderstanding
 
 # A user is waiting on these calls: fail fast rather than retry for a minute.
 QUERY_EMBED_RETRY_ATTEMPTS = 2
@@ -30,6 +31,13 @@ def get_query_embedder(redis: Annotated[Redis, Depends(get_redis)]) -> OpenAIEmb
 
 def get_llm_reranker(redis: Annotated[Redis, Depends(get_redis)]) -> LLMReranker:
     return LLMReranker(get_openai_client(), redis)
+
+
+def get_query_understanding(redis: Annotated[Redis, Depends(get_redis)]) -> QueryUnderstanding:
+    return QueryUnderstanding(get_openai_client(), redis)
+
+
+QueryUnderstandingDep = Annotated[QueryUnderstanding, Depends(get_query_understanding)]
 
 
 def get_query_engine(

@@ -117,7 +117,7 @@ async def test_usage(client: AsyncClient, uploaded: TenantAuth) -> None:
         "count": 0,
         "avg_latency_ms": None,
     }
-    assert body["by_query_type"] == {"TEXT": 3, "ITEM_ID": 1, "PROFILE": 0}
+    assert body["by_query_type"] == {"TEXT": 3, "ITEM_ID": 1, "PROFILE": 0, "ASK": 0}
     # BYPASS is not cacheable: 1 hit out of 3 cacheable queries.
     assert body["cache_hit_rate"] == pytest.approx(0.3333)
     assert body["feedback_total"] == 0

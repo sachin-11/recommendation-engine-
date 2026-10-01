@@ -256,6 +256,14 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "getFeedbackSummary",
         "Feedback counts by type for the last `days` days.",
     ),
+    ("post", "/api/v1/recommend/ask"): (
+        "askRecommendations",
+        "Ask in plain language, e.g. *remote python job, 3 to 5 years, Delhi or Pune is fine*. "
+        "A language model reads the question into search text and filters on your "
+        "`filter_fields`, using only values your items have; `interpretation` shows what it "
+        "understood and what it could not apply. When the filters match nothing, results are "
+        "returned without them (`relaxed: true`). Logged as query type ASK.",
+    ),
     ("get", "/api/v1/evaluation/queries"): (
         "listEvalQueries",
         "The golden set: each query with its relevant items, graded 1 (relevant) to 3 (perfect).",

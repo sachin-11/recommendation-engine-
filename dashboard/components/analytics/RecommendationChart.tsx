@@ -166,6 +166,7 @@ const QUERY_LABELS: Record<string, string> = {
   TEXT: "By text",
   ITEM_ID: "By item",
   PROFILE: "By profile",
+  ASK: "Asked in words",
 };
 
 export function QueryTypeChart({
