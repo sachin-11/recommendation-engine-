@@ -91,10 +91,15 @@ class LLMRerankResult:
 
     @property
     def cost_usd(self) -> float:
-        return (
-            self.prompt_tokens * settings.RERANK_INPUT_PRICE_PER_MILLION_TOKENS
-            + self.completion_tokens * settings.RERANK_OUTPUT_PRICE_PER_MILLION_TOKENS
-        ) / 1_000_000
+        return chat_cost_usd(self.prompt_tokens, self.completion_tokens)
+
+
+def chat_cost_usd(prompt_tokens: int, completion_tokens: int) -> float:
+    """What a call to the chat model (RERANK_MODEL) cost, at the configured prices."""
+    return (
+        prompt_tokens * settings.RERANK_INPUT_PRICE_PER_MILLION_TOKENS
+        + completion_tokens * settings.RERANK_OUTPUT_PRICE_PER_MILLION_TOKENS
+    ) / 1_000_000
 
 
 def sampling_options(model: str) -> dict[str, Any]:
