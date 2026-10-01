@@ -14,6 +14,7 @@ from app.services.recommendation.cache import RecommendationCache
 from app.services.recommendation.llm_reranker import LLMReranker
 from app.services.recommendation.query_engine import QueryEngine
 from app.services.recommendation.query_understanding import QueryUnderstanding
+from app.services.recommendation.summarizer import Summarizer
 
 # A user is waiting on these calls: fail fast rather than retry for a minute.
 QUERY_EMBED_RETRY_ATTEMPTS = 2
@@ -38,6 +39,13 @@ def get_query_understanding(redis: Annotated[Redis, Depends(get_redis)]) -> Quer
 
 
 QueryUnderstandingDep = Annotated[QueryUnderstanding, Depends(get_query_understanding)]
+
+
+def get_summarizer() -> Summarizer:
+    return Summarizer(get_openai_client())
+
+
+SummarizerDep = Annotated[Summarizer, Depends(get_summarizer)]
 
 
 def get_query_engine(

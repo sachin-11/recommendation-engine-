@@ -118,6 +118,10 @@ class FakeChatCompletions:
         self.delay = 0.0
         self.content: str | None = None  # a fixed (e.g. malformed) answer
         self.scores: dict[str, int] = {}  # item text substring -> score
+        # Streamed answers (stream=True): this text in word-sized pieces, failing after
+        # `stream_fail_after` pieces when set.
+        self.stream_text = "Found 3 jobs. The data engineer role fits best."
+        self.stream_fail_after: int | None = None
 
     async def create(
         self, *, model: str, messages: list[dict[str, str]], **kwargs: Any
@@ -127,6 +131,8 @@ class FakeChatCompletions:
             await asyncio.sleep(self.delay)
         if self.down:
             raise openai.APIConnectionError(request=_REQUEST)
+        if kwargs.get("stream"):
+            return self._stream(messages)  # type: ignore[return-value]
         prompt = messages[-1]["content"]
         if self.content is not None:
             content = self.content
@@ -148,6 +154,31 @@ class FakeChatCompletions:
         return _ChatResponse(
             [_Choice(_Message(content))], _ChatUsage(tokens, 10 * tokens // 100 + 5)
         )
+
+    async def _stream(self, messages: list[dict[str, str]]) -> Any:
+        pieces = [w + " " for w in self.stream_text.split()]
+        for n, piece in enumerate(pieces):
+            if self.stream_fail_after is not None and n == self.stream_fail_after:
+                raise openai.APIConnectionError(request=_REQUEST)
+            yield _Chunk([_DeltaChoice(_Delta(piece))], None)
+        tokens = len(messages[-1]["content"].split())
+        yield _Chunk([], _ChatUsage(tokens, len(pieces)))
+
+
+@dataclass
+class _Delta:
+    content: str | None
+
+
+@dataclass
+class _DeltaChoice:
+    delta: _Delta
+
+
+@dataclass
+class _Chunk:
+    choices: list[_DeltaChoice]
+    usage: _ChatUsage | None
 
 
 class FakeChat:

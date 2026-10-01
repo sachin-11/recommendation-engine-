@@ -264,6 +264,16 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "understood and what it could not apply. When the filters match nothing, results are "
         "returned without them (`relaxed: true`). Logged as query type ASK.",
     ),
+    ("post", "/api/v1/recommend/ask/stream"): (
+        "askRecommendationsStream",
+        "Same as `/recommend/ask`, answered as Server-Sent Events so a UI can show results "
+        "at once and a short written answer as it is generated. Events in order: "
+        "`interpretation` (what was understood), `results` (the `/ask` response without "
+        '`interpretation`), `summary` repeated (`{"text": "..."}` pieces of two or three '
+        "sentences naming the best fit), then `done` (`summary_tokens`, `summary_cost_usd`), or "
+        "`error` if the summary fails, after which the results already sent stand. Browsers "
+        "read it with `fetch` and a stream reader, since EventSource cannot send `X-API-Key`.",
+    ),
     ("get", "/api/v1/evaluation/queries"): (
         "listEvalQueries",
         "The golden set: each query with its relevant items, graded 1 (relevant) to 3 (perfect).",

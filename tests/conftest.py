@@ -55,9 +55,11 @@ from app.services.recommendation.dependencies import (
     get_llm_reranker,
     get_query_embedder,
     get_query_understanding,
+    get_summarizer,
 )
 from app.services.recommendation.llm_reranker import LLMReranker
 from app.services.recommendation.query_understanding import QueryUnderstanding
+from app.services.recommendation.summarizer import Summarizer
 from tests.fakes import TEST_DIMENSION, FakeOpenAIClient, FakeVectorStore
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -158,6 +160,10 @@ async def client(
     app.dependency_overrides[get_embedder] = lambda: embedder
     app.dependency_overrides[get_query_embedder] = lambda: embedder
     app.dependency_overrides[get_vector_store] = lambda: vector_store
+    app.dependency_overrides[get_summarizer] = lambda: Summarizer(
+        openai_client,  # type: ignore[arg-type]
+        timeout=1.0,
+    )
     app.dependency_overrides[get_query_understanding] = lambda: QueryUnderstanding(
         openai_client,  # type: ignore[arg-type]
         redis,

@@ -2138,6 +2138,122 @@
         "description": "Ask in plain language, e.g. *remote python job, 3 to 5 years, Delhi or Pune is fine*. A language model reads the question into search text and filters on your `filter_fields`, using only values your items have; `interpretation` shows what it understood and what it could not apply. When the filters match nothing, results are returned without them (`relaxed: true`). Logged as query type ASK."
       }
     },
+    "/api/v1/recommend/ask/stream": {
+      "post": {
+        "tags": [
+          "Recommendations"
+        ],
+        "summary": "Ask in plain language; results and a written answer stream as Server-Sent Events",
+        "operationId": "askRecommendationsStream",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A text/event-stream: interpretation, results, summary (repeated), done; or error after the results if the summary fails.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/event-stream": {}
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filters or query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Monthly recommendation limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "OpenAI or Pinecone unavailable or timed out (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Same as `/recommend/ask`, answered as Server-Sent Events so a UI can show results at once and a short written answer as it is generated. Events in order: `interpretation` (what was understood), `results` (the `/ask` response without `interpretation`), `summary` repeated (`{\"text\": \"...\"}` pieces of two or three sentences naming the best fit), then `done` (`summary_tokens`, `summary_cost_usd`), or `error` if the summary fails, after which the results already sent stand. Browsers read it with `fetch` and a stream reader, since EventSource cannot send `X-API-Key`."
+      }
+    },
     "/api/v1/recommend/batch": {
       "post": {
         "tags": [

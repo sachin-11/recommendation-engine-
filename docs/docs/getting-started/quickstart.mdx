@@ -281,6 +281,31 @@ The response is a normal recommendation response plus what was understood:
 
 Show `interpretation` to the user so they can see, and correct, what was searched. The model is shown the values your items actually have, and its answer is checked: a field you do not filter on, or a value no item has, is not applied but listed in `ignored`, e.g. `location: no items with 'Hyderabad'`. If the filters together match nothing, results are returned without them and `relaxed` is `true`. If the model is unavailable, the question is searched as written. A question costs one model call (about 1–2 seconds, cached for an hour) on top of a normal search, and is logged with query type `ASK`.
 
+#### Stream results and a written answer
+
+`/recommend/ask/stream` takes the same request and answers as [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events), so a chat-style UI can show results at once and a short written answer as it is generated, for example *"The best match is Cloud Security Engineer because it hardens cloud accounts and lists AWS."* Events, in order:
+
+| Event | Data |
+|---|---|
+| `interpretation` | What was understood, as above |
+| `results` | The `/ask` response without `interpretation` |
+| `summary` | `{"text": "..."}`, repeated: the answer, piece by piece, in the language of the question |
+| `done` | `summary_tokens` and `summary_cost_usd` |
+| `error` | Sent instead of `done` if the answer could not be written; the results already sent stand |
+
+The answer uses only the results it was shown. Browsers read the stream with `fetch` and a stream reader, because `EventSource` cannot send the `X-API-Key` header:
+
+```ts
+const response = await fetch(`${API}/api/v1/recommend/ask/stream`, {
+  method: "POST",
+  headers: { "X-API-Key": key, "Content-Type": "application/json" },
+  body: JSON.stringify({ question }),
+});
+const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+// Split what arrives on blank lines; each block is "event: <name>
+data: <json>".
+```
+
 ## 5. Send feedback
 
 When a user clicks, applies, buys or dismisses a result, report it with the `query_id`. This data is collected to improve ranking.

@@ -1,12 +1,16 @@
 """Recommendation queries and feedback. All routes require an X-API-Key header."""
 
+import json
 import time
 import uuid
+from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
+from fastapi.responses import StreamingResponse
 from redis.asyncio import Redis
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.v1.items import AUTH_RESPONSES, PROTECTED
@@ -14,6 +18,7 @@ from app.core.database import get_db, get_session_factory
 from app.core.metrics import RECO_LATENCY, RECO_REQUESTS
 from app.core.redis_client import get_redis
 from app.middleware.auth import AuthDep
+from app.models.item import Item
 from app.models.recommendation_log import QueryType
 from app.schemas.common import ErrorResponse
 from app.schemas.recommend import (
@@ -29,9 +34,15 @@ from app.schemas.recommend import (
     RecommendResponse,
     TextRecommendRequest,
 )
-from app.services.recommendation.dependencies import QueryEngineDep, QueryUnderstandingDep
+from app.services.embedding.text_builder import TextBuilder
+from app.services.recommendation.dependencies import (
+    QueryEngineDep,
+    QueryUnderstandingDep,
+    SummarizerDep,
+)
 from app.services.recommendation.query_engine import BatchQuery, Recommendation
 from app.services.recommendation.query_understanding import cached_profiles
+from app.services.recommendation.summarizer import SUMMARY_ITEMS, SummaryUsage
 from app.services.recommendation.tracking import (
     build_impressions,
     build_log,
@@ -229,66 +240,168 @@ async def recommend_by_profile(
     return respond.single(recommendation, payload.user_id)
 
 
+class Asker:
+    """Answers a question in plain language: read it into search text and filters, search,
+    and relax the filters if they match nothing. Shared by /ask and /ask/stream."""
+
+    def __init__(
+        self,
+        auth: AuthDep,
+        engine: QueryEngineDep,
+        understanding: QueryUnderstandingDep,
+        respond: ResponderDep,
+        limits: WorkspaceLimitsDep,
+        session: Annotated[AsyncSession, Depends(get_db)],
+        redis: Annotated[Redis, Depends(get_redis)],
+    ) -> None:
+        self._tenant = auth.tenant
+        self._engine = engine
+        self._understanding = understanding
+        self._respond = respond
+        self._limits = limits
+        self._session = session
+        self._redis = redis
+
+    async def answer(self, payload: AskRequest) -> AskResponse:
+        await self._limits.consume_queries()
+        tenant = self._tenant
+        profiles = await cached_profiles(self._redis, self._session, tenant)
+        meaning = await self._understanding.interpret(
+            payload.question, profiles, tenant.domain_config
+        )
+
+        async def search(filters: dict[str, Any]) -> Recommendation:
+            return await self._engine.recommend_by_text(
+                meaning.search_text,
+                tenant,
+                payload.top_k,
+                filters,
+                payload.include_raw_data,
+                payload.user_id,
+            )
+
+        recommendation = await search(meaning.filters)
+        # Filters that match nothing help no one: show the closest items without them.
+        relaxed = bool(meaning.filters) and not recommendation.results
+        if relaxed:
+            recommendation = await search({})
+        recommendation.query_type = QueryType.ASK
+        recommendation.query_input = {"question": payload.question, "query": meaning.search_text}
+        log.info(
+            "question_understood",
+            tenant_id=str(tenant.id),
+            filters=meaning.filters,
+            ignored=meaning.ignored,
+            fallback=meaning.fallback,
+            cached=meaning.cached,
+            understand_tokens=meaning.prompt_tokens + meaning.completion_tokens,
+            understand_cost_usd=meaning.cost_usd,
+            relaxed=relaxed,
+        )
+        response = self._respond.single(recommendation, payload.user_id)
+        return AskResponse(
+            **response.model_dump(),
+            interpretation=InterpretationOut(
+                search_text=meaning.search_text,
+                filters=meaning.filters,
+                ignored=meaning.ignored,
+                fallback=meaning.fallback,
+            ),
+            relaxed=relaxed,
+            understand_tokens=meaning.prompt_tokens + meaning.completion_tokens,
+        )
+
+    async def item_texts(self, external_ids: list[str]) -> list[tuple[str, str]]:
+        """(external id, text) for the given items, in order, as the summarizer reads them."""
+        if not external_ids:
+            return []
+        rows = await self._session.execute(
+            select(Item.external_id, Item.raw_data).where(
+                Item.tenant_id == self._tenant.id, Item.external_id.in_(external_ids)
+            )
+        )
+        raw = dict(rows.tuples().all())
+        builder = TextBuilder()
+        return [
+            (i, builder.build_embedding_text(raw[i], self._tenant.domain_config))
+            for i in external_ids
+            if i in raw
+        ]
+
+
+AskerDep = Annotated[Asker, Depends()]
+
+
 @router.post(
     "/ask",
     summary="Recommend items for a question in plain language",
     responses=_QUERY_RESPONSES,
     response_model_exclude_none=True,
 )
-async def ask(
-    payload: AskRequest,
-    auth: AuthDep,
-    engine: QueryEngineDep,
-    understanding: QueryUnderstandingDep,
-    respond: ResponderDep,
-    limits: WorkspaceLimitsDep,
-    session: Annotated[AsyncSession, Depends(get_db)],
-    redis: Annotated[Redis, Depends(get_redis)],
-) -> AskResponse:
-    await limits.consume_queries()
-    tenant = auth.tenant
-    profiles = await cached_profiles(redis, session, tenant)
-    meaning = await understanding.interpret(payload.question, profiles, tenant.domain_config)
+async def ask(payload: AskRequest, asker: AskerDep) -> AskResponse:
+    return await asker.answer(payload)
 
-    async def search(filters: dict[str, Any]) -> Recommendation:
-        return await engine.recommend_by_text(
-            meaning.search_text,
-            tenant,
-            payload.top_k,
-            filters,
-            payload.include_raw_data,
-            payload.user_id,
+
+def _event(name: str, data: Any) -> str:
+    """One Server-Sent Event."""
+    return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+
+
+@router.post(
+    "/ask/stream",
+    summary="Ask in plain language; results and a written answer stream as Server-Sent Events",
+    responses={
+        **_QUERY_RESPONSES,
+        200: {
+            "description": "A text/event-stream: interpretation, results, summary (repeated), "
+            "done; or error after the results if the summary fails.",
+            "content": {"text/event-stream": {}},
+        },
+    },
+)
+async def ask_stream(
+    payload: AskRequest, asker: AskerDep, summarizer: SummarizerDep
+) -> StreamingResponse:
+    # Understanding and search finish first, so their errors are normal HTTP errors and
+    # the database session is not held open while the summary streams.
+    answer = await asker.answer(payload)
+    top = answer.results[:SUMMARY_ITEMS]
+    texts = await asker.item_texts([r.external_id for r in top]) if summarizer.available else []
+    # The filter fields too (e.g. location), so the answer can speak to "not in Pune".
+    metadata = {r.external_id: r.metadata for r in top}
+    items = [
+        (i, " ".join([text, *(f"{k}: {v}" for k, v in metadata.get(i, {}).items())]))
+        for i, text in texts
+    ]
+
+    async def events() -> AsyncIterator[str]:
+        body = answer.model_dump(mode="json", exclude_none=True)
+        yield _event("interpretation", body.pop("interpretation"))
+        yield _event("results", body)
+        usage = SummaryUsage()
+        if not items:
+            yield _event("done", {"summary_tokens": 0, "summary_cost_usd": 0.0})
+            return
+        try:
+            async for piece in summarizer.stream(payload.question, items, usage):
+                yield _event("summary", {"text": piece})
+        except Exception as exc:
+            log.warning("summary_failed", error=repr(exc))
+            yield _event("error", {"message": "The summary could not be written."})
+            return
+        yield _event(
+            "done",
+            {
+                "summary_tokens": usage.prompt_tokens + usage.completion_tokens,
+                "summary_cost_usd": usage.cost_usd,
+            },
         )
 
-    recommendation = await search(meaning.filters)
-    # Filters that match nothing help no one: show the closest items without them.
-    relaxed = bool(meaning.filters) and not recommendation.results
-    if relaxed:
-        recommendation = await search({})
-    recommendation.query_type = QueryType.ASK
-    recommendation.query_input = {"question": payload.question, "query": meaning.search_text}
-    log.info(
-        "question_understood",
-        tenant_id=str(tenant.id),
-        filters=meaning.filters,
-        ignored=meaning.ignored,
-        fallback=meaning.fallback,
-        cached=meaning.cached,
-        understand_tokens=meaning.prompt_tokens + meaning.completion_tokens,
-        understand_cost_usd=meaning.cost_usd,
-        relaxed=relaxed,
-    )
-    response = respond.single(recommendation, payload.user_id)
-    return AskResponse(
-        **response.model_dump(),
-        interpretation=InterpretationOut(
-            search_text=meaning.search_text,
-            filters=meaning.filters,
-            ignored=meaning.ignored,
-            fallback=meaning.fallback,
-        ),
-        relaxed=relaxed,
-        understand_tokens=meaning.prompt_tokens + meaning.completion_tokens,
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        # No proxy buffering, so each event reaches the browser as it is written.
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
