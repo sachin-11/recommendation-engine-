@@ -10,6 +10,7 @@ from app.models.item_batch import BatchStatus, ItemBatch
 from app.models.item_stats import ItemStats
 from app.models.recommendation_impression import RecommendationImpression
 from app.models.recommendation_log import QueryType, RankingVariant, RecommendationLog
+from app.models.stripe_event import StripeEvent
 from app.models.tenant import DomainType, Tenant
 from app.models.token_usage import TokenUsage, UsageSource
 from app.models.user import Role, User
@@ -35,6 +36,7 @@ __all__ = [
     "RecommendationImpression",
     "RecommendationLog",
     "Role",
+    "StripeEvent",
     "Tenant",
     "TokenUsage",
     "UsageSource",

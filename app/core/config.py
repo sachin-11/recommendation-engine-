@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     # Stripe account, so these are prefixed.)
     RECO_STRIPE_PRO_MONTHLY_PRICE_ID: str | None = None
     RECO_STRIPE_PRO_YEARLY_PRICE_ID: str | None = None
+    # Signing secret of this app's webhook endpoint (or of `stripe listen` locally).
+    RECO_STRIPE_WEBHOOK_SECRET: SecretStr | None = None
 
     # --- LLM re-ranking (OpenAI chat model) ---
     # Measured on 10 candidates (2026-10): gpt-5.4-mini ~1.5 s, gpt-4o-mini ~3.2 s.
@@ -186,6 +188,7 @@ class Settings(BaseSettings):
         "STRIPE_SECRET_KEY",
         "RECO_STRIPE_PRO_MONTHLY_PRICE_ID",
         "RECO_STRIPE_PRO_YEARLY_PRICE_ID",
+        "RECO_STRIPE_WEBHOOK_SECRET",
         mode="before",
     )
     @classmethod

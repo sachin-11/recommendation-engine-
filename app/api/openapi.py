@@ -296,6 +296,12 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "Returns the URL of the Stripe Customer Portal, where the workspace's plan, payment "
         "method and invoices are managed and the subscription can be cancelled. Owner or Admin.",
     ),
+    ("post", "/api/v1/billing/sync"): (
+        "syncBilling",
+        "Reads the workspace's subscription from Stripe now and returns the billing state. "
+        "Webhooks keep the plan current; this is for right after checkout, when the user "
+        "returns before the webhook has arrived. Owner or Admin.",
+    ),
     ("get", "/api/v1/evaluation/queries"): (
         "listEvalQueries",
         "The golden set: each query with its relevant items, graded 1 (relevant) to 3 (perfect).",
