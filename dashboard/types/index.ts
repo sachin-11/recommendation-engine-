@@ -369,3 +369,40 @@ export interface PlatformOverview {
   queries_daily: { date: string; count: number }[];
   top_workspaces: { id: string; name: string; queries_this_month: number; tokens_this_month: number }[];
 }
+
+// --- Offline evaluation ---
+
+export interface EvalQuery {
+  id: string;
+  query: string;
+  /** external_id -> grade: 1 relevant, 2 very relevant, 3 perfect. */
+  relevant: Record<string, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvalMetrics {
+  ndcg: number;
+  recall: number;
+  mrr: number;
+}
+
+export interface EvalVariantResult extends EvalMetrics {
+  name: string;
+  ranking: Required<RankingConfig>;
+}
+
+export interface EvalQueryResult {
+  id: string;
+  query: string;
+  relevant: Record<string, number>;
+  by_variant: Record<string, EvalMetrics>;
+  top: Record<string, string[]>;
+}
+
+export interface EvalRun {
+  k: number;
+  queries: number;
+  variants: EvalVariantResult[];
+  per_query: EvalQueryResult[];
+}
