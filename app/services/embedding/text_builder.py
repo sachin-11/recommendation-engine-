@@ -27,6 +27,12 @@ class TextBuilder:
                 parts.append(f"{field}: {value}")
         return " ".join(parts)
 
+    def build_keyword_text(self, item_data: dict[str, Any], domain_config: dict[str, Any]) -> str:
+        """The searchable fields' values alone, for full-text search. Field names are left
+        out: a query for "title" should not match every item."""
+        fields = domain_config.get("searchable_fields") or []
+        return " ".join(filter(None, (self._stringify(item_data.get(f)) for f in fields)))
+
     def build_profile_text(self, profile: dict[str, Any], domain_config: dict[str, Any]) -> str:
         """Text for a query profile (e.g. a candidate's resume fields).
 

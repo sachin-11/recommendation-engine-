@@ -236,6 +236,9 @@ class EmbeddingPipeline:
                 item.embedding_status = EmbeddingStatus.DONE
                 item.pinecone_id = str(item.id)
                 item.item_metadata = metadata[item.id]
+                item.search_text = self._text_builder.build_keyword_text(
+                    item.raw_data, tenant.domain_config
+                )
 
     async def _embed(
         self, items: list[Item], texts: dict[uuid.UUID, str], tenant: Tenant

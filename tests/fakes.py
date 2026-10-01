@@ -15,6 +15,7 @@ from app.services.embedding.pinecone_service import (
     namespace_for,
     sanitize_metadata,
 )
+from app.services.recommendation.filter_builder import matches_filter
 
 TEST_DIMENSION = 8
 _REQUEST = httpx.Request("POST", "https://api.openai.com/v1/embeddings")
@@ -204,7 +205,7 @@ class FakeVectorStore:
         scored = [
             {"id": vid, "score": _cosine(vector, v["values"]), "metadata": dict(v["metadata"])}
             for vid, v in index.items()
-            if _passes(v["metadata"], filter or {})
+            if matches_filter(v["metadata"], filter or {})
         ]
         return sorted(scored, key=lambda m: m["score"], reverse=True)[:top_k]
 
@@ -213,32 +214,3 @@ def _cosine(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
     return dot / norm if norm else 0.0
-
-
-def _passes(metadata: dict[str, Any], pinecone_filter: dict[str, Any]) -> bool:
-    return all(
-        _check(op, operand, metadata.get(field))
-        for field, condition in pinecone_filter.items()
-        for op, operand in condition.items()
-    )
-
-
-def _check(op: str, operand: Any, value: Any) -> bool:
-    values = value if isinstance(value, list) else [value]
-    numeric = isinstance(value, int | float) and not isinstance(value, bool)
-    if op == "$eq":
-        return operand in values
-    if op == "$ne":
-        return operand not in values
-    if op == "$in":
-        return any(v in operand for v in values)
-    if op == "$nin":
-        return all(v not in operand for v in values)
-    if not numeric:
-        return False
-    return {
-        "$gt": value > operand,
-        "$gte": value >= operand,
-        "$lt": value < operand,
-        "$lte": value <= operand,
-    }[op]

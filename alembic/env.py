@@ -18,6 +18,16 @@ if config.config_file_name is not None:
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
 target_metadata = Base.metadata
 
+# Expression indexes autogenerate cannot compare: it skips them in the models and would
+# propose dropping them from the database. They are managed by hand in their migrations.
+EXPRESSION_INDEXES = {"ix_items_search_vector"}
+
+
+def include_object(
+    obj: object, name: str | None, type_: str, reflected: bool, compare_to: object
+) -> bool:
+    return not (type_ == "index" and name in EXPRESSION_INDEXES)
+
 
 def run_migrations_offline() -> None:
     """Emit SQL to stdout without a DB connection (`alembic upgrade head --sql`)."""
@@ -27,13 +37,19 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

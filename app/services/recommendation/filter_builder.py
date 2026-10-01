@@ -98,3 +98,36 @@ class FilterBuilder:
         if not all(_is_scalar(v) for v in values):
             raise ValueError("List values must be strings, numbers or booleans")
         return values
+
+
+def matches_filter(metadata: dict[str, Any], pinecone_filter: dict[str, Any]) -> bool:
+    """Whether item metadata passes a filter from build_pinecone_filter, with Pinecone's
+    semantics: a list value matches $eq/$in when any element does. Used where results do
+    not come from Pinecone (keyword search), so both retrievers filter alike."""
+    return all(
+        _check(op, operand, metadata.get(field))
+        for field, condition in pinecone_filter.items()
+        for op, operand in condition.items()
+    )
+
+
+def _check(op: str, operand: Any, value: Any) -> bool:
+    values = value if isinstance(value, list) else [value]
+    if op == "$eq":
+        return operand in values
+    if op == "$ne":
+        return operand not in values
+    if op == "$in":
+        return any(v in operand for v in values)
+    if op == "$nin":
+        return all(v not in operand for v in values)
+    if not _is_number(value):
+        return False
+    return bool(
+        {
+            "$gt": value > operand,
+            "$gte": value >= operand,
+            "$lt": value < operand,
+            "$lte": value <= operand,
+        }[op]
+    )
