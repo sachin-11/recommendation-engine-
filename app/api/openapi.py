@@ -285,6 +285,17 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "admin's overrides included), this month's usage, and what each plan includes. With "
         "billing off, `enabled` is false and nothing is limited by plan.",
     ),
+    ("post", "/api/v1/billing/checkout"): (
+        "startCheckout",
+        "Returns the URL of a Stripe-hosted Checkout page that subscribes the workspace to Pro, "
+        "billed monthly or yearly. Send the user there; the plan changes when Stripe confirms "
+        "the payment (by webhook), not when the user returns. Owner or Admin.",
+    ),
+    ("post", "/api/v1/billing/portal"): (
+        "openBillingPortal",
+        "Returns the URL of the Stripe Customer Portal, where the workspace's plan, payment "
+        "method and invoices are managed and the subscription can be cancelled. Owner or Admin.",
+    ),
     ("get", "/api/v1/evaluation/queries"): (
         "listEvalQueries",
         "The golden set: each query with its relevant items, graded 1 (relevant) to 3 (perfect).",

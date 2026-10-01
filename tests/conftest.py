@@ -206,10 +206,16 @@ class TenantAuth:
     tenant_id: str
     api_key: str
     domain_config: dict[str, Any]
+    # The owner's dashboard session, for actions an integration key (Developer) may not take.
+    owner_key: str = ""
 
     @property
     def headers(self) -> dict[str, str]:
         return {"X-API-Key": self.api_key}
+
+    @property
+    def owner_headers(self) -> dict[str, str]:
+        return {"X-API-Key": self.owner_key}
 
 
 async def register_tenant(
@@ -239,7 +245,10 @@ async def register_tenant(
     )
     assert created.status_code == 201, created.text
     return TenantAuth(
-        body["tenant"]["id"], created.json()["api_key"], body["tenant"]["domain_config"]
+        body["tenant"]["id"],
+        created.json()["api_key"],
+        body["tenant"]["domain_config"],
+        owner_key=body["api_key"],
     )
 
 

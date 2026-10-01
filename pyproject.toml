@@ -23,6 +23,7 @@ dependencies = [
     "prometheus-client (>=0.21)",
     "sentry-sdk[fastapi] (>=2.19)",
     "langsmith (>=0.3)",
+    "stripe (>=16.0,<17.0)",
 ]
 
 [tool.poetry]

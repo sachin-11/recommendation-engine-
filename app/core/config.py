@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # --- Billing (Stripe) ---
     # Off: no plan limits and every feature for every workspace (development, self-hosting).
     BILLING_ENABLED: bool = False
+    STRIPE_SECRET_KEY: SecretStr | None = None
+    # This app's own prices. (STRIPE_*_PRICE_ID names may belong to another app sharing the
+    # Stripe account, so these are prefixed.)
+    RECO_STRIPE_PRO_MONTHLY_PRICE_ID: str | None = None
+    RECO_STRIPE_PRO_YEARLY_PRICE_ID: str | None = None
 
     # --- LLM re-ranking (OpenAI chat model) ---
     # Measured on 10 candidates (2026-10): gpt-5.4-mini ~1.5 s, gpt-4o-mini ~3.2 s.
@@ -178,6 +183,9 @@ class Settings(BaseSettings):
         "SMTP_USERNAME",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "STRIPE_SECRET_KEY",
+        "RECO_STRIPE_PRO_MONTHLY_PRICE_ID",
+        "RECO_STRIPE_PRO_YEARLY_PRICE_ID",
         mode="before",
     )
     @classmethod

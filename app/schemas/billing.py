@@ -1,8 +1,9 @@
 """Billing: the workspace's plan, limits and usage."""
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.tenant import Plan
 
@@ -22,6 +23,16 @@ class UsageOut(BaseModel):
 class PlanOut(BaseModel):
     plan: Plan
     allowance: AllowanceOut
+
+
+class CheckoutRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    interval: Literal["month", "year"] = "month"
+
+
+class RedirectResponse(BaseModel):
+    url: str = Field(description="A Stripe-hosted page to send the user to.")
 
 
 class BillingResponse(BaseModel):
