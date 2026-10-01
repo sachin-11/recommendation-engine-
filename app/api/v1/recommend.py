@@ -34,6 +34,7 @@ from app.schemas.recommend import (
     RecommendResponse,
     TextRecommendRequest,
 )
+from app.services.billing.plans import require_llm_features
 from app.services.embedding.text_builder import TextBuilder
 from app.services.recommendation.dependencies import (
     QueryEngineDep,
@@ -263,6 +264,7 @@ class Asker:
         self._redis = redis
 
     async def answer(self, payload: AskRequest) -> AskResponse:
+        require_llm_features(self._tenant, "Asking in plain language")
         await self._limits.consume_queries()
         tenant = self._tenant
         profiles = await cached_profiles(self._redis, self._session, tenant)

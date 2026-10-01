@@ -3274,6 +3274,83 @@
         "description": "Ask every golden query once per variant of the ranking settings and score the top `k` with NDCG, recall and MRR. By default compares vector search alone, hybrid search and your saved settings. Nothing is saved, logged or counted toward your query limit."
       }
     },
+    "/api/v1/billing": {
+      "get": {
+        "tags": [
+          "Billing"
+        ],
+        "summary": "The workspace's plan, limits and usage",
+        "operationId": "getBilling",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "The plan in force, the subscription behind it, the limits that apply (a platform admin's overrides included), this month's usage, and what each plan includes. With billing off, `enabled` is false and nothing is limited by plan."
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [
@@ -5581,6 +5658,52 @@
         ],
         "title": "AcceptInvitationRequest"
       },
+      "AllowanceOut": {
+        "properties": {
+          "max_items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Items",
+            "description": "Items the workspace can hold; null is no cap."
+          },
+          "monthly_queries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Queries",
+            "description": "Recommendations per month; null is no cap."
+          },
+          "rate_limit_rpm": {
+            "type": "integer",
+            "title": "Rate Limit Rpm",
+            "description": "Requests per minute per API key."
+          },
+          "llm_features": {
+            "type": "boolean",
+            "title": "Llm Features",
+            "description": "LLM re-ranking and asking in plain language."
+          }
+        },
+        "type": "object",
+        "required": [
+          "max_items",
+          "monthly_queries",
+          "rate_limit_rpm",
+          "llm_features"
+        ],
+        "title": "AllowanceOut"
+      },
       "AnalyticsOverview": {
         "properties": {
           "total_items": {
@@ -6257,6 +6380,79 @@
           "progress_percentage"
         ],
         "title": "BatchStatusResponse"
+      },
+      "BillingResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "False: billing is off and nothing is limited by plan."
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan",
+            "description": "The plan in force now."
+          },
+          "subscribed_plan": {
+            "$ref": "#/components/schemas/Plan",
+            "description": "The plan paid for, which may have lapsed."
+          },
+          "subscription_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Status",
+            "description": "Stripe's status: active, trialing, past_due, canceled, ..."
+          },
+          "current_period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period End"
+          },
+          "cancel_at_period_end": {
+            "type": "boolean",
+            "title": "Cancel At Period End"
+          },
+          "allowance": {
+            "$ref": "#/components/schemas/AllowanceOut",
+            "description": "Limits in force, admin overrides included."
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageOut"
+          },
+          "plans": {
+            "items": {
+              "$ref": "#/components/schemas/PlanOut"
+            },
+            "type": "array",
+            "title": "Plans",
+            "description": "What each plan includes."
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "plan",
+          "subscribed_plan",
+          "subscription_status",
+          "current_period_end",
+          "cancel_at_period_end",
+          "allowance",
+          "usage",
+          "plans"
+        ],
+        "title": "BillingResponse"
       },
       "Body_upload_items_csv_api_v1_items_upload_csv_post": {
         "properties": {
@@ -7869,6 +8065,30 @@
         ],
         "title": "Metrics"
       },
+      "Plan": {
+        "type": "string",
+        "enum": [
+          "FREE",
+          "PRO"
+        ],
+        "title": "Plan"
+      },
+      "PlanOut": {
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "allowance": {
+            "$ref": "#/components/schemas/AllowanceOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan",
+          "allowance"
+        ],
+        "title": "PlanOut"
+      },
       "PlatformOverview": {
         "properties": {
           "workspaces_total": {
@@ -8913,6 +9133,24 @@
         ],
         "title": "TransferOwnershipRequest"
       },
+      "UsageOut": {
+        "properties": {
+          "items": {
+            "type": "integer",
+            "title": "Items"
+          },
+          "queries_this_month": {
+            "type": "integer",
+            "title": "Queries This Month"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "queries_this_month"
+        ],
+        "title": "UsageOut"
+      },
       "UsageResponse": {
         "properties": {
           "days": {
@@ -9617,6 +9855,10 @@
     {
       "name": "Index",
       "description": "Vector index statistics and rebuilds."
+    },
+    {
+      "name": "Billing",
+      "description": "Plans (Free, Pro), their limits and usage; upgrading through Stripe."
     },
     {
       "name": "Tenants",

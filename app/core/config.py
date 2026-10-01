@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # USD per 1M tokens, for the cost estimate in analytics (text-embedding-3-small: 0.02).
     EMBEDDING_PRICE_PER_MILLION_TOKENS: float = Field(default=0.02, ge=0)
 
+    # --- Billing (Stripe) ---
+    # Off: no plan limits and every feature for every workspace (development, self-hosting).
+    BILLING_ENABLED: bool = False
+
     # --- LLM re-ranking (OpenAI chat model) ---
     # Measured on 10 candidates (2026-10): gpt-5.4-mini ~1.5 s, gpt-4o-mini ~3.2 s.
     RERANK_MODEL: str = "gpt-5.4-mini"

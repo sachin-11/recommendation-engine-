@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.v1 import account, admin, analytics, evaluation, recommend, team
+from app.api.v1 import account, admin, analytics, billing, evaluation, recommend, team
 from app.api.v1.items import index_router, items_router
 from app.middleware.admin import require_admin
 from app.schemas.common import ERROR_RESPONSES, ErrorResponse
@@ -88,6 +88,7 @@ api_router.include_router(index_router)
 api_router.include_router(recommend.router)
 api_router.include_router(analytics.router)
 api_router.include_router(evaluation.router)
+api_router.include_router(billing.router)
 api_router.include_router(account.auth_router)
 api_router.include_router(account.me_router)
 api_router.include_router(team.members_router)

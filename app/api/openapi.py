@@ -46,6 +46,10 @@ TAGS: list[dict[str, str]] = [
     },
     {"name": "Index", "description": "Vector index statistics and rebuilds."},
     {
+        "name": "Billing",
+        "description": "Plans (Free, Pro), their limits and usage; upgrading through Stripe.",
+    },
+    {
         "name": "Tenants",
         "description": "Operator-only tenant management by id. Requires `X-Admin-Key` "
         "(ADMIN_API_KEY); disabled when it is not configured. Tenants use `/auth` and `/me`.",
@@ -67,6 +71,7 @@ _TAG_NAMES = {
     "recommend": "Recommendations",
     "analytics": "Analytics",
     "evaluation": "Evaluation",
+    "billing": "Billing",
     "index": "Index",
     "tenants": "Tenants",
     "admin": "Platform admin",
@@ -273,6 +278,12 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "sentences naming the best fit), then `done` (`summary_tokens`, `summary_cost_usd`), or "
         "`error` if the summary fails, after which the results already sent stand. Browsers "
         "read it with `fetch` and a stream reader, since EventSource cannot send `X-API-Key`.",
+    ),
+    ("get", "/api/v1/billing"): (
+        "getBilling",
+        "The plan in force, the subscription behind it, the limits that apply (a platform "
+        "admin's overrides included), this month's usage, and what each plan includes. With "
+        "billing off, `enabled` is false and nothing is limited by plan.",
     ),
     ("get", "/api/v1/evaluation/queries"): (
         "listEvalQueries",

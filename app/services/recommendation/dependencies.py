@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.redis_client import get_redis
+from app.middleware.auth import AuthDep
+from app.services.billing.plans import allowance
 from app.services.embedding.dependencies import VectorStoreDep
 from app.services.embedding.openai_embedder import OpenAIEmbedder, get_openai_client
 from app.services.recommendation.cache import RecommendationCache
@@ -54,9 +56,15 @@ def get_query_engine(
     embedder: Annotated[OpenAIEmbedder, Depends(get_query_embedder)],
     vector_store: VectorStoreDep,
     llm_reranker: Annotated[LLMReranker, Depends(get_llm_reranker)],
+    auth: AuthDep,
 ) -> QueryEngine:
+    # A plan without LLM features skips that stage, whatever the ranking settings say.
     return QueryEngine(
-        session, embedder, vector_store, RecommendationCache(redis), llm_reranker=llm_reranker
+        session,
+        embedder,
+        vector_store,
+        RecommendationCache(redis),
+        llm_reranker=llm_reranker if allowance(auth.tenant).llm_features else None,
     )
 
 

@@ -21,6 +21,7 @@ from app.core.exceptions import RateLimitError
 from app.core.redis_client import get_redis
 from app.middleware.auth import AuthDep
 from app.models.tenant import Tenant
+from app.services.billing.plans import allowance
 
 logger = logging.getLogger(__name__)
 
@@ -126,5 +127,5 @@ RateLimiterDep = Annotated[RateLimiter, Depends(get_rate_limiter)]
 
 
 async def enforce_request_rate(auth: AuthDep, limiter: RateLimiterDep) -> None:
-    # A platform admin can raise or lower the limit per workspace.
-    await limiter.hit_request(auth.api_key.id, auth.tenant.rate_limit_rpm)
+    # A platform admin can raise or lower the limit per workspace; plans may set one too.
+    await limiter.hit_request(auth.api_key.id, allowance(auth.tenant).rate_limit_rpm)

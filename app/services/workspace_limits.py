@@ -1,8 +1,9 @@
-"""Per-workspace limits set by a platform admin: total items and recommendations per month.
+"""Per-workspace limits: total items and recommendations per month.
 
-A limit of None means no cap. The requests-per-minute override (`Tenant.rate_limit_rpm`) is
-applied by the rate limiter. Like the rate limiter, the monthly counter fails open when Redis
-is unreachable, rather than taking recommendations down.
+They come from the workspace's plan, or from a platform admin's override (see
+app/services/billing/plans.py). A limit of None means no cap. The requests-per-minute
+limit is applied by the rate limiter. Like the rate limiter, the monthly counter fails
+open when Redis is unreachable, rather than taking recommendations down.
 """
 
 import logging
@@ -21,6 +22,7 @@ from app.middleware.auth import AuthDep
 from app.models.item import Item
 from app.models.recommendation_log import RecommendationLog
 from app.models.tenant import Tenant
+from app.services.billing.plans import allowance
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,7 @@ class WorkspaceLimits:
     async def ensure_item_capacity(self, external_ids: list[str]) -> None:
         """Reject an upload that would take the workspace past `max_items`. Re-uploading
         items that already exist replaces them, so only new external ids count."""
-        limit = self._tenant.max_items
+        limit = allowance(self._tenant).max_items
         if limit is None:
             return
         current = await self._session.scalar(
@@ -72,7 +74,7 @@ class WorkspaceLimits:
     async def consume_queries(self, count: int = 1) -> None:
         """Count `count` recommendations against `monthly_query_limit`, or raise without
         counting them."""
-        limit = self._tenant.monthly_query_limit
+        limit = allowance(self._tenant).monthly_queries
         if limit is None:
             return
         start = month_start()

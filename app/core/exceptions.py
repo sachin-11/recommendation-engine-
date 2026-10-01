@@ -50,6 +50,13 @@ class LimitExceededError(ForbiddenError):
     error_code = "limit_exceeded"
 
 
+class PlanRequiredError(AppException):
+    """The feature is in a higher plan than the workspace's."""
+
+    status_code = 402
+    error_code = "plan_required"
+
+
 class NotFoundError(AppException):
     status_code = 404
     error_code = "not_found"
