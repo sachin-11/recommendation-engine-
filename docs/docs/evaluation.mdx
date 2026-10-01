@@ -1,0 +1,67 @@
+---
+title: Evaluating ranking
+description: Score ranking settings on a golden set of queries before users see them.
+---
+
+# Evaluating ranking
+
+Changing ranking settings (hybrid search, feedback weights, personalization) changes what every user sees. Offline evaluation measures a change before it goes live: you list queries with the answers you expect, and the engine scores each setting on them.
+
+It complements the [A/B test](getting-started/quickstart.mdx#check-that-it-helps-ab-test), which measures real users' clicks after a change is live. Evaluate offline first, then confirm online.
+
+## 1. Build a golden set
+
+A golden query is a text and the items a good answer contains, graded **1** (relevant), **2** (very relevant) or **3** (perfect). Use real queries from your users where you can, and include the hard cases: exact codes, names, rare skills. Twenty to fifty queries already tell settings apart.
+
+```bash
+curl -X POST $RECO_API/api/v1/evaluation/queries \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"query": "senior python developer with fastapi",
+       "relevant": {"job_101": 3, "job_245": 2, "job_310": 1}}'
+```
+
+Posting the same query text again replaces its relevant items. `GET /evaluation/queries` lists the set and `DELETE /evaluation/queries/{id}` removes one. A workspace holds up to 200 queries.
+
+## 2. Run an evaluation
+
+```bash
+curl -X POST $RECO_API/api/v1/evaluation/run \
+  -H "X-API-Key: $RECO_API_KEY" -H "Content-Type: application/json" \
+  -d '{"k": 10}'
+```
+
+By default it compares three settings:
+
+| Variant | What it is |
+|---|---|
+| `vector` | Vector search alone: similarity to the query |
+| `hybrid` | Vector plus keyword search (your `keyword` weight, or 0.3), no feedback |
+| `current` | Your saved ranking settings |
+
+To compare your own, pass up to five variants. Each `ranking` changes only the fields it names; the rest keep your saved values:
+
+```json
+{
+  "k": 10,
+  "variants": [
+    { "name": "keyword 0.2", "ranking": { "keyword": 0.2 } },
+    { "name": "keyword 0.5", "ranking": { "keyword": 0.5 } }
+  ]
+}
+```
+
+A run saves no settings, logs no queries and does not count toward your monthly limit. Query embeddings are cached, so running again is cheap.
+
+## 3. Read the results
+
+Each variant gets three scores between 0 and 1, averaged over the golden set. Higher is better.
+
+| Metric | Answers |
+|---|---|
+| **NDCG@k** | Are the most relevant items at the top? 1 means the best possible order. |
+| **Recall@k** | How many of the relevant items appear in the top k at all? |
+| **MRR** | How soon does the first relevant item appear? 1 means first, 0.5 second. |
+
+`per_query` shows every query's scores and returned items per variant. Read the queries where a variant loses: they show what it gets wrong, which an average hides.
+
+Evaluation measures queries asked by no one in particular: personalization needs a real user's history, so only the A/B test measures it.

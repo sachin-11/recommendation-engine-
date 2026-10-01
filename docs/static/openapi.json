@@ -2666,6 +2666,381 @@
         "description": "OpenAI embedding tokens for the last `days` days: uploads (INGEST) and queries (QUERY), daily totals, cache hits and an estimated cost."
       }
     },
+    "/api/v1/evaluation/queries": {
+      "get": {
+        "tags": [
+          "Evaluation"
+        ],
+        "summary": "List the golden-set queries",
+        "operationId": "listEvalQueries",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EvalQueryOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Queries Api V1 Evaluation Queries Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "The golden set: each query with its relevant items, graded 1 (relevant) to 3 (perfect)."
+      },
+      "post": {
+        "tags": [
+          "Evaluation"
+        ],
+        "summary": "Add a golden query, or replace the relevant items of an existing one",
+        "operationId": "saveEvalQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalQueryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalQueryOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "The query existed; its items were replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalQueryOut"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The golden set is full",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Add a golden query (201), or replace the relevant items of the same query text (200). At most 200 queries per workspace."
+      }
+    },
+    "/api/v1/evaluation/queries/{query_id}": {
+      "delete": {
+        "tags": [
+          "Evaluation"
+        ],
+        "summary": "Delete a golden query",
+        "operationId": "deleteEvalQuery",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "query_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Query Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove a query from the golden set."
+      }
+    },
+    "/api/v1/evaluation/run": {
+      "post": {
+        "tags": [
+          "Evaluation"
+        ],
+        "summary": "Score ranking settings on the golden set (NDCG, recall, MRR)",
+        "operationId": "runEvaluation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRunResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No golden queries, or duplicate names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "OpenAI or Pinecone unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "description": "Ask every golden query once per variant of the ranking settings and score the top `k` with NDCG, recall and MRR. By default compares vector search alone, hybrid search and your saved settings. Nothing is saved, logged or counted toward your query limit."
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "tags": [
@@ -5957,6 +6332,270 @@
         ],
         "title": "ErrorResponse"
       },
+      "EvalQueryIn": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "relevant": {
+            "additionalProperties": {
+              "type": "integer",
+              "maximum": 3.0,
+              "minimum": 1.0
+            },
+            "propertyNames": {
+              "maxLength": 255,
+              "minLength": 1
+            },
+            "type": "object",
+            "maxProperties": 100,
+            "minProperties": 1,
+            "title": "Relevant",
+            "description": "Items a good answer contains, graded 1 (relevant) to 3 (perfect)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "query",
+          "relevant"
+        ],
+        "title": "EvalQueryIn",
+        "example": {
+          "query": "senior python developer with fastapi",
+          "relevant": {
+            "job_101": 3,
+            "job_245": 2,
+            "job_310": 1
+          }
+        }
+      },
+      "EvalQueryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "relevant": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Relevant"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "query",
+          "relevant",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "EvalQueryOut"
+      },
+      "EvalQueryResult": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "relevant": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Relevant"
+          },
+          "by_variant": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Metrics"
+            },
+            "type": "object",
+            "title": "By Variant"
+          },
+          "top": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Top",
+            "description": "Per variant, the external ids returned."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "query",
+          "relevant",
+          "by_variant",
+          "top"
+        ],
+        "title": "EvalQueryResult"
+      },
+      "EvalRunRequest": {
+        "properties": {
+          "k": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "K",
+            "description": "Metrics count the top k results.",
+            "default": 10
+          },
+          "variants": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/EvalVariantIn"
+                },
+                "type": "array",
+                "maxItems": 5,
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variants",
+            "description": "Settings to compare. Default: vector only, hybrid, and your saved settings."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "EvalRunRequest",
+        "example": {
+          "k": 10,
+          "variants": [
+            {
+              "name": "vector",
+              "ranking": {
+                "enabled": false
+              }
+            },
+            {
+              "name": "hybrid 0.3",
+              "ranking": {
+                "keyword": 0.3
+              }
+            }
+          ]
+        }
+      },
+      "EvalRunResponse": {
+        "properties": {
+          "k": {
+            "type": "integer",
+            "title": "K"
+          },
+          "queries": {
+            "type": "integer",
+            "title": "Queries"
+          },
+          "variants": {
+            "items": {
+              "$ref": "#/components/schemas/EvalVariantResult"
+            },
+            "type": "array",
+            "title": "Variants"
+          },
+          "per_query": {
+            "items": {
+              "$ref": "#/components/schemas/EvalQueryResult"
+            },
+            "type": "array",
+            "title": "Per Query"
+          }
+        },
+        "type": "object",
+        "required": [
+          "k",
+          "queries",
+          "variants",
+          "per_query"
+        ],
+        "title": "EvalRunResponse"
+      },
+      "EvalVariantIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "ranking": {
+            "$ref": "#/components/schemas/RankingOverride"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "EvalVariantIn"
+      },
+      "EvalVariantResult": {
+        "properties": {
+          "ndcg": {
+            "type": "number",
+            "title": "Ndcg",
+            "description": "NDCG@k: 1 is the best possible order."
+          },
+          "recall": {
+            "type": "number",
+            "title": "Recall",
+            "description": "Recall@k: share of the relevant items found."
+          },
+          "mrr": {
+            "type": "number",
+            "title": "Mrr",
+            "description": "Mean reciprocal rank of the first relevant result."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "ranking": {
+            "$ref": "#/components/schemas/RankingConfig"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ndcg",
+          "recall",
+          "mrr",
+          "name",
+          "ranking"
+        ],
+        "title": "EvalVariantResult"
+      },
       "FeedbackRequest": {
         "properties": {
           "query_id": {
@@ -6775,6 +7414,32 @@
         ],
         "title": "MessageResponse"
       },
+      "Metrics": {
+        "properties": {
+          "ndcg": {
+            "type": "number",
+            "title": "Ndcg",
+            "description": "NDCG@k: 1 is the best possible order."
+          },
+          "recall": {
+            "type": "number",
+            "title": "Recall",
+            "description": "Recall@k: share of the relevant items found."
+          },
+          "mrr": {
+            "type": "number",
+            "title": "Mrr",
+            "description": "Mean reciprocal rank of the first relevant result."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ndcg",
+          "recall",
+          "mrr"
+        ],
+        "title": "Metrics"
+      },
       "PlatformOverview": {
         "properties": {
           "workspaces_total": {
@@ -7025,6 +7690,103 @@
           "comparison"
         ],
         "title": "RankingExperimentResponse"
+      },
+      "RankingOverride": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "engagement": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engagement"
+          },
+          "conversion": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversion"
+          },
+          "negative": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative"
+          },
+          "popularity": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Popularity"
+          },
+          "personalization": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personalization"
+          },
+          "keyword": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keyword"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RankingOverride",
+        "description": "Ranking settings to evaluate; omitted fields keep the workspace's saved values."
       },
       "RankingVariant": {
         "type": "string",
@@ -8361,6 +9123,10 @@
     {
       "name": "Analytics",
       "description": "Query volume, latency, cache hit rate, feedback."
+    },
+    {
+      "name": "Evaluation",
+      "description": "A golden set of queries with known good answers, and runs that score ranking settings on it (NDCG, recall, MRR) before they reach users."
     },
     {
       "name": "Index",

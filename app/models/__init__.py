@@ -3,6 +3,7 @@
 from app.models.api_key import ApiKey
 from app.models.auth_token import AuthToken, AuthTokenPurpose
 from app.models.base import Base, BaseEntity
+from app.models.eval_query import EvalQuery
 from app.models.invitation import Invitation
 from app.models.item import EmbeddingStatus, Item
 from app.models.item_batch import BatchStatus, ItemBatch
@@ -23,6 +24,7 @@ __all__ = [
     "BatchStatus",
     "DomainType",
     "EmbeddingStatus",
+    "EvalQuery",
     "FeedbackType",
     "Invitation",
     "Item",

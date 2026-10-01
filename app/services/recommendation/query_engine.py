@@ -195,7 +195,10 @@ class QueryEngine:
         filters: dict[str, Any] | None = None,
         include_raw_data: bool = False,
         user_id: str | None = None,
+        ranking: RankingConfig | None = None,
     ) -> Recommendation:
+        """`ranking` replaces the workspace's ranking settings for this call only, e.g. to
+        compare settings in an offline evaluation without saving them."""
         return await self._recommend(
             tenant,
             QueryType.TEXT,
@@ -207,6 +210,7 @@ class QueryEngine:
             lambda pinecone_filter, k, plan: self._search_text(
                 query_text, tenant, k, pinecone_filter, plan
             ),
+            ranking,
         )
 
     @traced(
@@ -400,10 +404,11 @@ class QueryEngine:
         include_raw_data: bool,
         user_id: str | None,
         search: Callable[[dict[str, Any], int, SearchPlan], Awaitable[Matches]],
+        ranking: RankingConfig | None = None,
     ) -> Recommendation:
         """`search(pinecone_filter, k, plan)` returns the `k` best items for the plan."""
         pinecone_filter = self._filter_builder.build_pinecone_filter(filters, tenant.domain_config)
-        config = ranking_config(tenant.domain_config)
+        config = ranking or ranking_config(tenant.domain_config)
         variant = assign_variant(config, tenant.id, user_id)
         history = await self._history(tenant, config, variant, user_id)
         # A user with no history gets the anonymous results, so shares their cache entry.

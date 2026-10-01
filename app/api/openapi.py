@@ -39,6 +39,11 @@ TAGS: list[dict[str, str]] = [
     {"name": "Items", "description": "Upload, list and delete the items you want to recommend."},
     {"name": "Recommendations", "description": "Similar items by text, item or profile; feedback."},
     {"name": "Analytics", "description": "Query volume, latency, cache hit rate, feedback."},
+    {
+        "name": "Evaluation",
+        "description": "A golden set of queries with known good answers, and runs that score "
+        "ranking settings on it (NDCG, recall, MRR) before they reach users.",
+    },
     {"name": "Index", "description": "Vector index statistics and rebuilds."},
     {
         "name": "Tenants",
@@ -61,6 +66,7 @@ _TAG_NAMES = {
     "items": "Items",
     "recommend": "Recommendations",
     "analytics": "Analytics",
+    "evaluation": "Evaluation",
     "index": "Index",
     "tenants": "Tenants",
     "admin": "Platform admin",
@@ -249,6 +255,25 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
     ("get", "/api/v1/analytics/feedback-summary"): (
         "getFeedbackSummary",
         "Feedback counts by type for the last `days` days.",
+    ),
+    ("get", "/api/v1/evaluation/queries"): (
+        "listEvalQueries",
+        "The golden set: each query with its relevant items, graded 1 (relevant) to 3 (perfect).",
+    ),
+    ("post", "/api/v1/evaluation/queries"): (
+        "saveEvalQuery",
+        "Add a golden query (201), or replace the relevant items of the same query text (200). "
+        "At most 200 queries per workspace.",
+    ),
+    ("delete", "/api/v1/evaluation/queries/{query_id}"): (
+        "deleteEvalQuery",
+        "Remove a query from the golden set.",
+    ),
+    ("post", "/api/v1/evaluation/run"): (
+        "runEvaluation",
+        "Ask every golden query once per variant of the ranking settings and score the top `k` "
+        "with NDCG, recall and MRR. By default compares vector search alone, hybrid search and "
+        "your saved settings. Nothing is saved, logged or counted toward your query limit.",
     ),
     ("get", "/api/v1/analytics/ranking-experiment"): (
         "getRankingExperiment",

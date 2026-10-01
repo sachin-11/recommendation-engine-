@@ -29,6 +29,7 @@ const sidebars: SidebarsConfig = {
       label: "SDKs",
       items: ["sdks/javascript", "sdks/python"],
     },
+    "evaluation",
     { type: "link", label: "API reference", href: "/api-reference/" },
     "deployment",
     "monitoring",
