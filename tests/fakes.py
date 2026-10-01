@@ -1,7 +1,10 @@
 """In-memory stand-ins for OpenAI and Pinecone, so tests make no network calls."""
 
+import asyncio
 import hashlib
+import json
 import math
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -78,9 +81,84 @@ class FakeEmbeddings:
         return [text for call in self.calls for text in call]
 
 
+@dataclass
+class _Message:
+    content: str | None
+
+
+@dataclass
+class _Choice:
+    message: _Message
+
+
+@dataclass
+class _ChatUsage:
+    prompt_tokens: int
+    completion_tokens: int
+
+
+@dataclass
+class _ChatResponse:
+    choices: list[_Choice]
+    usage: _ChatUsage
+
+
+_PROMPT_ITEM = re.compile(r"^\[(\d+)\] (.*)$", re.MULTILINE)
+_PROMPT_QUERY = re.compile(r"^Query: (.*)$", re.MULTILINE)
+
+
+class FakeChatCompletions:
+    """Stand-in for the LLM reranker's chat model: scores each item by how many query
+    words it contains (3 points each, at most 10), unless `scores` overrides by item
+    text substring."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self.down = False
+        self.delay = 0.0
+        self.content: str | None = None  # a fixed (e.g. malformed) answer
+        self.scores: dict[str, int] = {}  # item text substring -> score
+
+    async def create(
+        self, *, model: str, messages: list[dict[str, str]], **kwargs: Any
+    ) -> _ChatResponse:
+        self.calls.append({"model": model, "messages": messages, **kwargs})
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.down:
+            raise openai.APIConnectionError(request=_REQUEST)
+        prompt = messages[-1]["content"]
+        if self.content is not None:
+            content = self.content
+        else:
+            query_match = _PROMPT_QUERY.search(prompt)
+            words = set(json.loads(query_match.group(1)).lower().split()) if query_match else set()
+            items = []
+            for number, raw in _PROMPT_ITEM.findall(prompt):
+                text = json.loads(raw)
+                score = next(
+                    (v for k, v in self.scores.items() if k.lower() in text.lower()),
+                    min(10, 3 * sum(w in text.lower() for w in words)),
+                )
+                items.append(
+                    {"id": number, "score": score, "reason": f"matches {score // 3} words"}
+                )
+            content = json.dumps({"items": items})
+        tokens = len(prompt.split())
+        return _ChatResponse(
+            [_Choice(_Message(content))], _ChatUsage(tokens, 10 * tokens // 100 + 5)
+        )
+
+
+class FakeChat:
+    def __init__(self) -> None:
+        self.completions = FakeChatCompletions()
+
+
 class FakeOpenAIClient:
     def __init__(self) -> None:
         self.embeddings = FakeEmbeddings()
+        self.chat = FakeChat()
 
 
 class FakeVectorStore:

@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     # USD per 1M tokens, for the cost estimate in analytics (text-embedding-3-small: 0.02).
     EMBEDDING_PRICE_PER_MILLION_TOKENS: float = Field(default=0.02, ge=0)
 
+    # --- LLM re-ranking (OpenAI chat model) ---
+    RERANK_MODEL: str = "gpt-4o-mini"
+    # A user is waiting: past this the results keep their previous order.
+    RERANK_TIMEOUT_SECONDS: float = Field(default=4.0, gt=0)
+    # Each candidate's text is cut to this many characters in the prompt.
+    RERANK_ITEM_CHARS: int = Field(default=600, gt=0)
+    RERANK_CACHE_TTL_SECONDS: int = Field(default=60 * 60, gt=0)
+    # USD per 1M tokens, for the cost shown with results (gpt-4o-mini: 0.15 in, 0.60 out).
+    RERANK_INPUT_PRICE_PER_MILLION_TOKENS: float = Field(default=0.15, ge=0)
+    RERANK_OUTPUT_PRICE_PER_MILLION_TOKENS: float = Field(default=0.60, ge=0)
+
     # --- Pinecone ---
     PINECONE_API_KEY: SecretStr | None = None
     # One shared serverless index; each tenant gets its own namespace in it.
