@@ -1,10 +1,12 @@
 """Billing: the workspace's plan, limits and usage; Stripe checkout and webhooks."""
 
+import json
 import logging
 from typing import Annotated
 
 import stripe
 from fastapi import APIRouter, Depends, Request
+from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +14,7 @@ from app.api.v1.items import AUTH_RESPONSES, PROTECTED
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.exceptions import BadRequestError, ServiceUnavailableError
+from app.core.redis_client import get_redis
 from app.middleware.auth import AuthDep, require_role
 from app.models.item import Item
 from app.models.recommendation_log import RecommendationLog
@@ -22,12 +25,13 @@ from app.schemas.billing import (
     BillingResponse,
     CheckoutRequest,
     PlanOut,
+    PriceOut,
     RedirectResponse,
     UsageOut,
 )
 from app.schemas.common import ErrorResponse
 from app.services.billing.plans import PLANS, Allowance, allowance, entitled_plan
-from app.services.billing.stripe_billing import StripeBillingDep, get_stripe_client
+from app.services.billing.stripe_billing import StripeBillingDep, get_stripe_client, price_for
 from app.services.billing.webhooks import SubscriptionSync
 from app.services.workspace_limits import month_start
 
@@ -47,7 +51,10 @@ def _allowance_out(a: Allowance) -> AllowanceOut:
 
 @router.get("", dependencies=PROTECTED, summary="The workspace's plan, limits and usage")
 async def get_billing(
-    auth: AuthDep, session: Annotated[AsyncSession, Depends(get_db)]
+    auth: AuthDep,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
+    client: Annotated[stripe.StripeClient | None, Depends(get_stripe_client)],
 ) -> BillingResponse:
     tenant = auth.tenant
     items = await session.scalar(
@@ -69,7 +76,39 @@ async def get_billing(
         allowance=_allowance_out(allowance(tenant)),
         usage=UsageOut(items=items or 0, queries_this_month=queries or 0),
         plans=[PlanOut(plan=p, allowance=_allowance_out(PLANS[p])) for p in Plan],
+        pro_prices=await _pro_prices(redis, client),
     )
+
+
+async def _pro_prices(redis: Redis, client: stripe.StripeClient | None) -> list[PriceOut]:
+    """Pro's prices as Stripe has them, kept an hour in Redis. Prices are shown, never
+    charged, from here: Checkout charges what Stripe has, whatever this says."""
+    if client is None or not settings.BILLING_ENABLED:
+        return []
+    key = "billing:pro_prices"
+    try:
+        if cached := await redis.get(key):
+            return [PriceOut.model_validate(p) for p in json.loads(cached)]
+    except Exception:
+        logger.warning("Price cache read failed", exc_info=True)
+    prices = []
+    for interval in ("month", "year"):
+        price_id = price_for(interval)
+        if not price_id:
+            continue
+        try:
+            price = await client.v1.prices.retrieve_async(price_id)
+        except stripe.StripeError:
+            logger.warning("Could not read Stripe price %s", price_id, exc_info=True)
+            return []
+        prices.append(
+            PriceOut(interval=interval, unit_amount=price.unit_amount or 0, currency=price.currency)
+        )
+    try:
+        await redis.set(key, json.dumps([p.model_dump() for p in prices]), ex=60 * 60)
+    except Exception:
+        logger.warning("Price cache write failed", exc_info=True)
+    return prices
 
 
 # Paying is the owner's or an admin's call.
@@ -115,6 +154,7 @@ async def portal(auth: AuthDep, billing: StripeBillingDep) -> RedirectResponse:
 async def sync(
     auth: AuthDep,
     session: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
     client: Annotated[stripe.StripeClient | None, Depends(get_stripe_client)],
 ) -> BillingResponse:
     if not settings.BILLING_ENABLED:
@@ -126,7 +166,7 @@ async def sync(
     except stripe.StripeError as exc:
         raise ServiceUnavailableError(f"Stripe is unavailable: {exc}") from exc
     await session.commit()
-    return await get_billing(auth, session)
+    return await get_billing(auth, session, redis, client)
 
 
 @router.post("/webhook", include_in_schema=False)

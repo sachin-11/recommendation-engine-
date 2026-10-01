@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { AlertTriangle, Loader2, MessageSquareText, Sparkles, X } from "lucide-react";
 
 import { ResultCard, ResultCardSkeleton } from "@/components/recommend/ResultCard";
@@ -150,9 +151,17 @@ export function AskPanel({ tenant }: { tenant: Tenant }) {
           title="The question could not be answered"
           description={stream.error ?? "Something went wrong."}
           action={
-            <Button variant="outline" onClick={() => submit()}>
-              Try again
-            </Button>
+            stream.errorCode === "plan_required" ? (
+              <Button asChild>
+                <Link href="/dashboard/billing">
+                  <Sparkles /> See plans
+                </Link>
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={() => submit()}>
+                Try again
+              </Button>
+            )
           }
         />
       ) : (

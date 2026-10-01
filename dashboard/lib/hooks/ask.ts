@@ -17,6 +17,8 @@ export interface AskState {
   /** The summary could not be written; results may still be there. */
   summaryFailed: boolean;
   error: string | null;
+  /** The API's error code, e.g. "plan_required". */
+  errorCode: string | null;
   summaryTokens: number;
 }
 
@@ -28,6 +30,7 @@ const INITIAL: AskState = {
   summary: "",
   summaryFailed: false,
   error: null,
+  errorCode: null,
   summaryTokens: 0,
 };
 
@@ -49,14 +52,14 @@ export function parseEvents(buffer: string): { events: { name: string; data: unk
   return { events, rest };
 }
 
-async function errorMessage(response: Response): Promise<string> {
+async function readError(response: Response): Promise<{ message: string; code: string | null }> {
   try {
-    const body = (await response.json()) as { error?: { message?: string }; detail?: unknown };
-    if (body.error?.message) return body.error.message;
+    const body = (await response.json()) as { error?: { message?: string; code?: string } };
+    if (body.error?.message) return { message: body.error.message, code: body.error.code ?? null };
   } catch {
     // Not JSON.
   }
-  return `The request failed (${response.status}).`;
+  return { message: `The request failed (${response.status}).`, code: null };
 }
 
 /** POST /recommend/ask/stream: results first, then the written answer as it arrives. */
@@ -81,8 +84,8 @@ export function useAskStream() {
         signal: abort.signal,
       });
       if (!response.ok || !response.body) {
-        const message = await errorMessage(response);
-        setState((s) => ({ ...s, status: "error", error: message }));
+        const { message, code } = await readError(response);
+        setState((s) => ({ ...s, status: "error", error: message, errorCode: code }));
         return;
       }
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();

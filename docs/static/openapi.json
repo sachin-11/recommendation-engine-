@@ -6749,6 +6749,14 @@
             "type": "array",
             "title": "Plans",
             "description": "What each plan includes."
+          },
+          "pro_prices": {
+            "items": {
+              "$ref": "#/components/schemas/PriceOut"
+            },
+            "type": "array",
+            "title": "Pro Prices",
+            "description": "Pro's prices from Stripe; empty when payments are not configured."
           }
         },
         "type": "object",
@@ -6761,7 +6769,8 @@
           "cancel_at_period_end",
           "allowance",
           "usage",
-          "plans"
+          "plans",
+          "pro_prices"
         ],
         "title": "BillingResponse"
       },
@@ -8491,6 +8500,34 @@
           "top_workspaces"
         ],
         "title": "PlatformOverview"
+      },
+      "PriceOut": {
+        "properties": {
+          "interval": {
+            "type": "string",
+            "enum": [
+              "month",
+              "year"
+            ],
+            "title": "Interval"
+          },
+          "unit_amount": {
+            "type": "integer",
+            "title": "Unit Amount",
+            "description": "In the currency's smallest unit, e.g. cents."
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency"
+          }
+        },
+        "type": "object",
+        "required": [
+          "interval",
+          "unit_amount",
+          "currency"
+        ],
+        "title": "PriceOut"
       },
       "ProfileRecommendRequest": {
         "properties": {

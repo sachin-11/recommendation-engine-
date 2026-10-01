@@ -1,0 +1,54 @@
+---
+title: Billing
+description: Free and Pro plans, upgrading through Stripe, and setting billing up on a server.
+---
+
+# Billing
+
+Workspaces are on the **Free** or the **Pro** plan:
+
+| | Free | Pro |
+|---|---|---|
+| Items | 1,000 | 50,000 |
+| Recommendations a month | 5,000 | 100,000 |
+| Vector, hybrid and feedback ranking | ✓ | ✓ |
+| LLM re-ranking with reasons | | ✓ |
+| Ask in plain language, streamed answers | | ✓ |
+
+On Free, `/recommend/ask` answers `402 Payment Required` with error code `plan_required`, and LLM re-ranking is skipped even if it is turned on in the ranking settings. A limit a platform admin set on a workspace takes precedence over its plan's.
+
+## Upgrading
+
+The dashboard's **Billing** page shows the plan, what has been used this month, and the plans side by side. **Upgrade to Pro** opens a Stripe-hosted checkout, monthly or yearly; **Manage billing** opens the Stripe Customer Portal to change the card, see invoices or cancel. Both are for the owner or an admin. Card details go to Stripe only.
+
+The API does the same: `POST /billing/checkout` (`{"interval": "month"}` or `"year"`) and `POST /billing/portal` return the Stripe page to send the user to, and `GET /billing` returns the plan, limits, usage and prices.
+
+A cancelled subscription keeps Pro until the end of the period it was paid for. If a renewal payment fails, Pro stays while Stripe retries (status `past_due`); if it never succeeds, the workspace returns to Free.
+
+## Setting billing up on a server
+
+Billing is **off** by default: every workspace then has every feature and no plan limits, which suits development and self-hosting. To turn it on:
+
+1. In Stripe, create a product (e.g. *RecoEngine Pro*) with a recurring monthly and a yearly price.
+2. Add a webhook endpoint `https://<your API host>/api/v1/billing/webhook` for the events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid` and `invoice.payment_failed`.
+3. Set, in the API's environment:
+
+```bash
+BILLING_ENABLED=true
+STRIPE_SECRET_KEY=sk_live_...           # sk_test_... for test mode
+RECO_STRIPE_PRO_MONTHLY_PRICE_ID=price_...
+RECO_STRIPE_PRO_YEARLY_PRICE_ID=price_...
+RECO_STRIPE_WEBHOOK_SECRET=whsec_...    # the endpoint's signing secret
+```
+
+Locally, the Stripe CLI forwards events to your machine and prints the signing secret to use:
+
+```bash
+stripe listen --forward-to localhost:8000/api/v1/billing/webhook
+```
+
+In test mode, pay with card `4242 4242 4242 4242`, any future expiry and any CVC.
+
+## How plan changes are applied
+
+The plan changes only when Stripe says so by webhook, never because a browser came back from checkout (it may not). Each webhook is checked against its signature, handled once even if Stripe delivers it twice, and treated only as a hint of which subscription changed: the subscription's current state is read from Stripe and copied, so events arriving out of order still leave the right plan. When the user returns from checkout before the webhook arrives, the Billing page reads the subscription from Stripe directly (`POST /billing/sync`). Events for subscriptions that are not this app's Pro prices, e.g. another product on the same Stripe account, are ignored.

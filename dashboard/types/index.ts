@@ -441,3 +441,31 @@ export interface AskResults extends RecommendResponse {
   relaxed: boolean;
   understand_tokens: number;
 }
+
+// --- Billing ---
+
+export type Plan = "FREE" | "PRO";
+
+export interface Allowance {
+  /** null: no cap. */
+  max_items: number | null;
+  monthly_queries: number | null;
+  rate_limit_rpm: number;
+  llm_features: boolean;
+}
+
+export interface Billing {
+  /** False: billing is off on this server and nothing is limited by plan. */
+  enabled: boolean;
+  /** The plan in force now. */
+  plan: Plan;
+  /** The plan paid for, which may have lapsed. */
+  subscribed_plan: Plan;
+  subscription_status: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  allowance: Allowance;
+  usage: { items: number; queries_this_month: number };
+  plans: { plan: Plan; allowance: Allowance }[];
+  pro_prices: { interval: "month" | "year"; unit_amount: number; currency: string }[];
+}

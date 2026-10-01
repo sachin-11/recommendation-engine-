@@ -68,6 +68,13 @@ class FakeSubscriptions:
         return {"data": [s for s in self.current.values() if s["customer"] == params["customer"]]}
 
 
+class FakePrices:
+    AMOUNTS = {"price_month": 2900, "price_year": 29000}
+
+    async def retrieve_async(self, price_id: str) -> Any:
+        return type("Price", (), {"unit_amount": self.AMOUNTS[price_id], "currency": "usd"})()
+
+
 class FakeStripe:
     def __init__(self) -> None:
         self.subscriptions = FakeSubscriptions()
@@ -77,6 +84,7 @@ class FakeStripe:
 
         self.v1 = _V1()
         self.v1.subscriptions = self.subscriptions  # type: ignore[attr-defined]
+        self.v1.prices = FakePrices()  # type: ignore[attr-defined]
 
 
 @pytest.fixture
@@ -141,6 +149,10 @@ async def test_checkout_completed_makes_the_workspace_pro(
     assert tenant.current_period_end.replace(tzinfo=UTC) == datetime.fromtimestamp(PERIOD_END, UTC)
     billing = (await client.get(BILLING, headers=owner.headers)).json()
     assert billing["plan"] == "PRO" and billing["allowance"]["llm_features"] is True
+    assert billing["pro_prices"] == [
+        {"interval": "month", "unit_amount": 2900, "currency": "usd"},
+        {"interval": "year", "unit_amount": 29000, "currency": "usd"},
+    ]
 
 
 async def test_a_repeated_event_is_handled_once(

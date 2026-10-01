@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpen,
   ClipboardCheck,
+  CreditCard,
   Database,
   KeyRound,
   LayoutDashboard,
@@ -27,6 +28,7 @@ export const NAV = [
   { href: "/dashboard/evaluation", label: "Evaluation", icon: ClipboardCheck },
   { href: "/dashboard/api-keys", label: "API Keys", icon: KeyRound },
   { href: "/dashboard/team", label: "Team", icon: Users },
+  { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 

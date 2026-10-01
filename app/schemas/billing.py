@@ -20,6 +20,12 @@ class UsageOut(BaseModel):
     queries_this_month: int
 
 
+class PriceOut(BaseModel):
+    interval: Literal["month", "year"]
+    unit_amount: int = Field(description="In the currency's smallest unit, e.g. cents.")
+    currency: str
+
+
 class PlanOut(BaseModel):
     plan: Plan
     allowance: AllowanceOut
@@ -47,3 +53,6 @@ class BillingResponse(BaseModel):
     allowance: AllowanceOut = Field(description="Limits in force, admin overrides included.")
     usage: UsageOut
     plans: list[PlanOut] = Field(description="What each plan includes.")
+    pro_prices: list[PriceOut] = Field(
+        description="Pro's prices from Stripe; empty when payments are not configured."
+    )
