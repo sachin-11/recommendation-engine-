@@ -31,11 +31,15 @@ class ResultFormatter:
         the tenant's filter fields; `raw_data` (looked up by external_id) is added only
         when asked for."""
         filter_fields = set(tenant.domain_config.get("filter_fields") or [])
-        ordered = sorted(
-            pinecone_matches,
-            key=lambda m: m.get("ranking_score", m.get("retrieval_score", m["score"])),
-            reverse=True,
-        )
+        if pinecone_matches and all("position" in m for m in pinecone_matches):
+            # The LLM stage decided the order.
+            ordered = sorted(pinecone_matches, key=lambda m: m["position"])
+        else:
+            ordered = sorted(
+                pinecone_matches,
+                key=lambda m: m.get("ranking_score", m.get("retrieval_score", m["score"])),
+                reverse=True,
+            )
         results: list[dict[str, Any]] = []
         for rank, match in enumerate(ordered, start=1):
             metadata = match.get("metadata") or {}
@@ -47,6 +51,8 @@ class ResultFormatter:
                 "score_label": score_label(match["score"]),
                 "metadata": {k: v for k, v in metadata.items() if k in filter_fields},
             }
+            if match.get("llm_reason"):
+                result["reason"] = match["llm_reason"]
             if include_raw_data:
                 result["raw_data"] = (raw_data or {}).get(external_id)
             results.append(result)

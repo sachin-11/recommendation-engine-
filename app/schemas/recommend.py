@@ -102,6 +102,11 @@ class RecommendationOut(BaseModel):
     raw_data: dict[str, Any] | None = Field(
         default=None, description="Present only when include_raw_data is true."
     )
+    reason: str | None = Field(
+        default=None,
+        description="Why this item fits the query, in a sentence. Present when LLM "
+        "re-ranking (domain_config.ranking.llm_rerank) ordered the results.",
+    )
 
 
 class RecommendResponse(BaseModel):
@@ -111,6 +116,9 @@ class RecommendResponse(BaseModel):
     latency_ms: int
     embedding_tokens: int = Field(
         description="OpenAI tokens used to embed this query (0 when served from cache)."
+    )
+    rerank_tokens: int = Field(
+        default=0, description="OpenAI chat tokens used by LLM re-ranking (0 when off or cached)."
     )
     request_id: str
 
@@ -154,6 +162,9 @@ class BatchRecommendResponse(BaseModel):
     query_ids: dict[str, uuid.UUID] = Field(description="Per query, for sending feedback.")
     latency_ms: int
     embedding_tokens: int = Field(description="OpenAI tokens used for the whole batch.")
+    rerank_tokens: int = Field(
+        default=0, description="OpenAI chat tokens used by LLM re-ranking across the batch."
+    )
     request_id: str
 
 

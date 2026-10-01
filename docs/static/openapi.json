@@ -5821,6 +5821,12 @@
             "title": "Embedding Tokens",
             "description": "OpenAI tokens used for the whole batch."
           },
+          "rerank_tokens": {
+            "type": "integer",
+            "title": "Rerank Tokens",
+            "description": "OpenAI chat tokens used by LLM re-ranking across the batch.",
+            "default": 0
+          },
           "request_id": {
             "type": "string",
             "title": "Request Id"
@@ -7640,6 +7646,20 @@
             "description": "Hybrid search for text and profile queries: how much exact keyword matches lift an item, on top of its similarity. 0 is vector search alone.",
             "default": 0.0
           },
+          "llm_rerank": {
+            "type": "boolean",
+            "title": "Llm Rerank",
+            "description": "Text and profile queries: an OpenAI chat model reads the top results and reorders them, giving each a one-line reason. Adds about 1-3 s on a cache miss.",
+            "default": false
+          },
+          "llm_candidates": {
+            "type": "integer",
+            "maximum": 20.0,
+            "minimum": 2.0,
+            "title": "Llm Candidates",
+            "description": "How many top results the LLM reads.",
+            "default": 10
+          },
           "control_share": {
             "type": "number",
             "maximum": 1.0,
@@ -7872,6 +7892,12 @@
             "title": "Embedding Tokens",
             "description": "OpenAI tokens used to embed this query (0 when served from cache)."
           },
+          "rerank_tokens": {
+            "type": "integer",
+            "title": "Rerank Tokens",
+            "description": "OpenAI chat tokens used by LLM re-ranking (0 when off or cached).",
+            "default": 0
+          },
           "request_id": {
             "type": "string",
             "title": "Request Id"
@@ -7923,6 +7949,18 @@
             ],
             "title": "Raw Data",
             "description": "Present only when include_raw_data is true."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why this item fits the query, in a sentence. Present when LLM re-ranking (domain_config.ranking.llm_rerank) ordered the results."
           }
         },
         "type": "object",

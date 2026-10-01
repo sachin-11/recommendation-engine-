@@ -48,6 +48,7 @@ from app.services.recommendation.experiment import assign_variant
 from app.services.recommendation.filter_builder import FilterBuilder
 from app.services.recommendation.hybrid import fuse, keyword_only_ids
 from app.services.recommendation.keyword_search import KeywordSearch
+from app.services.recommendation.llm_reranker import Candidate, LLMReranker, LLMRerankResult
 from app.services.recommendation.personalization import Taste, liked_items
 from app.services.recommendation.reranker import Reranker, candidate_count, workspace_stats
 from app.services.recommendation.result_formatter import ResultFormatter
@@ -73,6 +74,10 @@ class Recommendation:
     ranking_variant: RankingVariant = RankingVariant.CONTROL
     # True when the query leaned toward the user's liked items.
     personalized: bool = False
+    # The LLM re-ranking stage: chat tokens spent, their cost, and why it was skipped.
+    rerank_tokens: int = 0
+    rerank_cost_usd: float = 0.0
+    rerank_fallback: str | None = None
 
 
 @dataclass
@@ -121,6 +126,20 @@ def _upstream_errors() -> Iterator[None]:
         raise BadRequestError(f"The query text was rejected by the embedding model: {exc}") from exc
 
 
+def _external_id(match: dict[str, Any]) -> str:
+    return str((match.get("metadata") or {}).get("external_id") or match["id"])
+
+
+def _rerank_fields(outcome: LLMRerankResult | None) -> dict[str, Any]:
+    if outcome is None:
+        return {}
+    return {
+        "rerank_tokens": outcome.prompt_tokens + outcome.completion_tokens,
+        "rerank_cost_usd": outcome.cost_usd,
+        "rerank_fallback": outcome.fallback,
+    }
+
+
 def _keyword_weight(config: RankingConfig, variant: RankingVariant) -> float:
     # The A/B control is similarity to the query alone, so no keyword matching either.
     return config.keyword if variant is RankingVariant.RERANKED else 0.0
@@ -146,6 +165,8 @@ def _trace_recommendation(rec: Recommendation) -> dict[str, Any]:
         "embedding_tokens": rec.embedding_tokens,
         "ranking_variant": rec.ranking_variant.value,
         "personalized": rec.personalized,
+        "rerank_tokens": rec.rerank_tokens,
+        "rerank_fallback": rec.rerank_fallback,
         "results": [
             {
                 "rank": r["rank"],
@@ -169,6 +190,7 @@ class QueryEngine:
         formatter: ResultFormatter | None = None,
         text_builder: TextBuilder | None = None,
         filter_builder: FilterBuilder | None = None,
+        llm_reranker: LLMReranker | None = None,
     ) -> None:
         self._session = session
         self._embedder = embedder
@@ -179,6 +201,7 @@ class QueryEngine:
         self._filter_builder = filter_builder or FilterBuilder()
         self._reranker = Reranker(session)
         self._keywords = KeywordSearch(session)
+        self._llm = llm_reranker
 
     # --- Query types ---
 
@@ -211,6 +234,7 @@ class QueryEngine:
                 query_text, tenant, k, pinecone_filter, plan
             ),
             ranking,
+            llm_query=query_text,
         )
 
     @traced(
@@ -271,6 +295,7 @@ class QueryEngine:
             lambda pinecone_filter, k, plan: self._search_text(
                 text, tenant, k, pinecone_filter, plan
             ),
+            llm_query=text,
         )
 
     @traced(
@@ -327,6 +352,8 @@ class QueryEngine:
         misses = [q for q in queries if q.id not in hits]
 
         fresh: dict[str, list[dict[str, Any]]] = {}
+        ranked: dict[str, Matches] = {}
+        llm_outcomes: dict[str, LLMRerankResult] = {}
         query_tokens: dict[str, int] = {}
         taste: Taste | None = None
         if misses:
@@ -336,7 +363,10 @@ class QueryEngine:
                 else None
             )
             rerank = prior is not None and prior.has_data
-            fetch_k = candidate_count(top_k) if rerank else top_k
+            llm_n = self._llm_candidates(config, variant)
+            # The LLM judges its candidates before the cut to top_k.
+            keep_k = max(top_k, llm_n)
+            fetch_k = candidate_count(keep_k) if rerank else keep_k
             with track_embedding_usage() as usage:
                 try:
                     with _upstream_errors():
@@ -374,8 +404,17 @@ class QueryEngine:
                             keyword,
                         )
                 if rerank and prior is not None:
-                    matches = await self._reranker.rerank(tenant.id, matches, top_k, config, prior)
-                fresh[query.id] = self._formatter.format_results(matches, tenant)
+                    matches = await self._reranker.rerank(tenant.id, matches, keep_k, config, prior)
+                ranked[query.id] = matches
+            if llm_n:
+                judged = await self._llm_rerank_many(
+                    tenant, {q.id: q.query for q in misses}, ranked, llm_n
+                )
+                for qid, outcome in judged.items():
+                    ranked[qid] = outcome.matches
+                    llm_outcomes[qid] = outcome
+            for qid, matches in ranked.items():
+                fresh[qid] = self._formatter.format_results(matches[:top_k], tenant)
             await asyncio.gather(*(self._cache.set(keys[q_id], r) for q_id, r in fresh.items()))
 
         return {
@@ -388,6 +427,7 @@ class QueryEngine:
                 embedding_tokens=query_tokens.get(q.id, 0),
                 ranking_variant=variant,
                 personalized=bool(history) if q.id in hits else taste is not None,
+                **_rerank_fields(llm_outcomes.get(q.id)),
             )
             for q in queries
         }
@@ -405,14 +445,20 @@ class QueryEngine:
         user_id: str | None,
         search: Callable[[dict[str, Any], int, SearchPlan], Awaitable[Matches]],
         ranking: RankingConfig | None = None,
+        llm_query: str | None = None,
     ) -> Recommendation:
-        """`search(pinecone_filter, k, plan)` returns the `k` best items for the plan."""
+        """`search(pinecone_filter, k, plan)` returns the `k` best items for the plan.
+        `llm_query` is the text the LLM stage judges results against (text and profile
+        queries); without it that stage is skipped."""
         pinecone_filter = self._filter_builder.build_pinecone_filter(filters, tenant.domain_config)
         config = ranking or ranking_config(tenant.domain_config)
         variant = assign_variant(config, tenant.id, user_id)
         history = await self._history(tenant, config, variant, user_id)
         # A user with no history gets the anonymous results, so shares their cache entry.
         personal = {"user": user_id} if history else {}
+
+        llm_n = self._llm_candidates(config, variant) if llm_query else 0
+        llm_outcome: LLMRerankResult | None = None
 
         def done(
             results: list[dict[str, Any]], status: CacheStatus, tokens: int = 0
@@ -426,6 +472,7 @@ class QueryEngine:
                 tokens,
                 variant,
                 personalized=bool(history),
+                **_rerank_fields(llm_outcome),
             )
 
         # raw_data can be large and changes often; those responses are never cached.
@@ -454,12 +501,25 @@ class QueryEngine:
                         taste=await self._taste(tenant, config, history),
                         keyword=_keyword_weight(config, variant),
                     )
+                    # The LLM judges its candidates before the cut to top_k.
                     matches = await self._ranked_search(
-                        tenant, top_k, config, variant, lambda k: search(pinecone_filter, k, plan)
+                        tenant,
+                        max(top_k, llm_n),
+                        config,
+                        variant,
+                        lambda k: search(pinecone_filter, k, plan),
                     )
             finally:
                 # Tokens spent before a Pinecone failure still count.
                 await record_embedding_usage(self._session, tenant.id, UsageSource.QUERY, usage)
+
+        if llm_n and llm_query:
+            judged = await self._llm_rerank_many(
+                tenant, {"query": llm_query}, {"query": matches}, llm_n
+            )
+            llm_outcome = judged["query"]
+            matches = llm_outcome.matches
+        matches = matches[:top_k]
 
         raw_data = await self._raw_data(tenant, matches) if include_raw_data else None
         results = self._formatter.format_results(matches, tenant, include_raw_data, raw_data)
@@ -467,6 +527,49 @@ class QueryEngine:
             return done(results, "BYPASS", usage.tokens)
         await self._cache.set(key, results)
         return done(results, "MISS", usage.tokens)
+
+    def _llm_candidates(self, config: RankingConfig, variant: RankingVariant) -> int:
+        """How many top results the LLM reads; 0 when the stage is off."""
+        if self._llm is None or not config.llm_rerank or variant is RankingVariant.CONTROL:
+            return 0
+        return config.llm_candidates
+
+    async def _llm_rerank_many(
+        self,
+        tenant: Tenant,
+        texts: dict[str, str],
+        matches: dict[str, Matches],
+        n: int,
+    ) -> dict[str, LLMRerankResult]:
+        """The LLM stage for one or more queries: item texts are read from the database
+        first, then the model calls run concurrently."""
+        assert self._llm is not None
+        top = {qid: m[:n] for qid, m in matches.items()}
+        raw = await self._raw_data(tenant, [m for ms in top.values() for m in ms])
+        config = tenant.domain_config
+
+        def candidates(qid: str) -> list[Candidate]:
+            found = []
+            for match in top[qid]:
+                data = raw.get(_external_id(match))
+                if data is not None:
+                    found.append(
+                        Candidate(
+                            match["id"], self._text_builder.build_embedding_text(data, config)
+                        )
+                    )
+            return found
+
+        llm = self._llm
+        outcomes = await asyncio.gather(
+            *(llm.rerank(texts[qid], matches[qid], candidates(qid)) for qid in texts)
+        )
+        result = dict(zip(texts, outcomes, strict=True))
+        for outcome in result.values():
+            # The formatter keeps this order instead of sorting by score again.
+            for position, match in enumerate(outcome.matches):
+                match["position"] = position
+        return result
 
     async def _ranked_search(
         self,

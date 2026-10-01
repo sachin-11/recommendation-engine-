@@ -316,6 +316,8 @@ Every few minutes, each item's feedback from the last 30 days is added up per im
   "popularity": 0.0,
   "personalization": 0.2,
   "keyword": 0.0,
+  "llm_rerank": false,
+  "llm_candidates": 10,
   "control_share": 0.0
 }
 ```
@@ -326,7 +328,9 @@ Every few minutes, each item's feedback from the last 30 days is added up per im
 
 `keyword` (0–1) turns on hybrid search for text and profile queries. Vector search finds items that mean the same as the query but can miss an exact term, such as a product code, a library or a name. With `keyword` above 0, items containing the query's words are also found by full-text search, and each is lifted by up to `keyword` (the best keyword match gets the full lift). An item found only by keyword still gets its `score` from its similarity to the query. Start around `0.2`; recommendations for similar items (`by-item`) stay purely semantic.
 
-Set `enabled` to `false` to order by similarity to the query alone, with no feedback, personalization or keyword matching.
+`llm_rerank` adds a last stage for text and profile queries: an OpenAI chat model reads the top `llm_candidates` results (2–20) with the query, scores how well each answers it, and reorders them. Each result it ranked comes back with a `reason`, a sentence on why it fits, which you can show to users. It is the most accurate stage and the slowest: expect 1–3 seconds more on a cache miss, and `rerank_tokens` in the response says what it used. If the model is slow (over 4 seconds) or unavailable, results keep their previous order and the request still succeeds. Similar-item queries (`by-item`) never use it.
+
+Set `enabled` to `false` to order by similarity to the query alone, with no feedback, personalization, keyword matching or LLM.
 
 These weights can also be set in the dashboard under **Settings → Ranking**. Saving ranking needs the Admin role.
 

@@ -19,6 +19,10 @@ export interface RankingConfig {
   personalization?: number;
   /** 0–1: hybrid search, how much exact keyword matches lift an item. 0 = vector only. */
   keyword?: number;
+  /** An OpenAI chat model reorders the top results and explains each. */
+  llm_rerank?: boolean;
+  /** 2–20: how many top results the model reads. */
+  llm_candidates?: number;
   /** 0–1: A/B test share of traffic ordered by similarity alone. 0 runs no test. */
   control_share?: number;
 }

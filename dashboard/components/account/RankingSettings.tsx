@@ -23,10 +23,12 @@ const DEFAULTS: Required<RankingConfig> = {
   popularity: 0,
   personalization: 0.2,
   keyword: 0,
+  llm_rerank: false,
+  llm_candidates: 10,
   control_share: 0,
 };
 
-type NumericKey = Exclude<keyof RankingConfig, "enabled">;
+type NumericKey = Exclude<keyof RankingConfig, "enabled" | "llm_rerank" | "llm_candidates">;
 
 const FIELDS: { key: NumericKey; label: string; hint: string; max: number; percent?: boolean }[] = [
   { key: "engagement", label: "Engagement", hint: "Clicks and thumbs up per impression", max: 5 },

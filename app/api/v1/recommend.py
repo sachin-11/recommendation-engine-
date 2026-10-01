@@ -79,6 +79,7 @@ class Responder:
             query_id=query_id,
             latency_ms=latency_ms,
             embedding_tokens=recommendation.embedding_tokens,
+            rerank_tokens=recommendation.rerank_tokens,
             request_id=self._request_id,
         )
 
@@ -97,6 +98,7 @@ class Responder:
             query_ids=query_ids,
             latency_ms=latency_ms,
             embedding_tokens=sum(r.embedding_tokens for r in recommendations.values()),
+            rerank_tokens=sum(r.rerank_tokens for r in recommendations.values()),
             request_id=self._request_id,
         )
 
@@ -125,6 +127,9 @@ class Responder:
                 result_count=len(rec.results),
                 cache=rec.cache_status,
                 embedding_tokens=rec.embedding_tokens,
+                rerank_tokens=rec.rerank_tokens,
+                rerank_cost_usd=rec.rerank_cost_usd,
+                rerank_fallback=rec.rerank_fallback,
             )
 
     def _latency_ms(self) -> int:

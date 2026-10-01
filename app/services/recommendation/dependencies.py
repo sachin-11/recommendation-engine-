@@ -11,6 +11,7 @@ from app.core.redis_client import get_redis
 from app.services.embedding.dependencies import VectorStoreDep
 from app.services.embedding.openai_embedder import OpenAIEmbedder, get_openai_client
 from app.services.recommendation.cache import RecommendationCache
+from app.services.recommendation.llm_reranker import LLMReranker
 from app.services.recommendation.query_engine import QueryEngine
 
 # A user is waiting on these calls: fail fast rather than retry for a minute.
@@ -27,13 +28,20 @@ def get_query_embedder(redis: Annotated[Redis, Depends(get_redis)]) -> OpenAIEmb
     )
 
 
+def get_llm_reranker(redis: Annotated[Redis, Depends(get_redis)]) -> LLMReranker:
+    return LLMReranker(get_openai_client(), redis)
+
+
 def get_query_engine(
     session: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[Redis, Depends(get_redis)],
     embedder: Annotated[OpenAIEmbedder, Depends(get_query_embedder)],
     vector_store: VectorStoreDep,
+    llm_reranker: Annotated[LLMReranker, Depends(get_llm_reranker)],
 ) -> QueryEngine:
-    return QueryEngine(session, embedder, vector_store, RecommendationCache(redis))
+    return QueryEngine(
+        session, embedder, vector_store, RecommendationCache(redis), llm_reranker=llm_reranker
+    )
 
 
 QueryEngineDep = Annotated[QueryEngine, Depends(get_query_engine)]

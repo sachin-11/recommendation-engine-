@@ -76,6 +76,8 @@ export const rankingConfigSchema = z
     popularity: weight,
     personalization: z.number().min(0, "Must be 0 or more").max(1, "Must be 1 or less"),
     keyword: z.number().min(0, "Must be 0 or more").max(1, "Must be 1 or less"),
+    llm_rerank: z.boolean(),
+    llm_candidates: z.number().int().min(2, "At least 2").max(20, "At most 20"),
     control_share: z.number().min(0, "Must be 0 or more").max(1, "Must be 1 or less"),
   })
   .partial()

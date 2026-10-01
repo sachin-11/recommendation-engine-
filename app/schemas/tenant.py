@@ -69,6 +69,16 @@ class RankingConfig(BaseModel):
             "lift an item, on top of its similarity. 0 is vector search alone."
         ),
     )
+    llm_rerank: bool = Field(
+        default=False,
+        description=(
+            "Text and profile queries: an OpenAI chat model reads the top results and "
+            "reorders them, giving each a one-line reason. Adds about 1-3 s on a cache miss."
+        ),
+    )
+    llm_candidates: int = Field(
+        default=10, ge=2, le=20, description="How many top results the LLM reads."
+    )
     control_share: float = Field(
         default=0.0,
         ge=0,

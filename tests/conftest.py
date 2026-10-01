@@ -51,7 +51,8 @@ from app.models import Base
 from app.services.embedding.dependencies import get_embedder, get_vector_store
 from app.services.embedding.openai_embedder import OpenAIEmbedder
 from app.services.embedding.pipeline import EmbeddingPipeline
-from app.services.recommendation.dependencies import get_query_embedder
+from app.services.recommendation.dependencies import get_llm_reranker, get_query_embedder
+from app.services.recommendation.llm_reranker import LLMReranker
 from tests.fakes import TEST_DIMENSION, FakeOpenAIClient, FakeVectorStore
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
@@ -138,6 +139,7 @@ async def client(
     redis: fakeredis.FakeAsyncRedis,
     embedder: OpenAIEmbedder,
     vector_store: FakeVectorStore,
+    openai_client: FakeOpenAIClient,
 ) -> AsyncIterator[AsyncClient]:
     app = create_app()
 
@@ -151,6 +153,11 @@ async def client(
     app.dependency_overrides[get_embedder] = lambda: embedder
     app.dependency_overrides[get_query_embedder] = lambda: embedder
     app.dependency_overrides[get_vector_store] = lambda: vector_store
+    app.dependency_overrides[get_llm_reranker] = lambda: LLMReranker(
+        openai_client,  # type: ignore[arg-type]
+        redis,
+        timeout=0.5,
+    )
 
     # ASGITransport does not run the lifespan, so no real DB/Redis connections are attempted.
     # It also awaits background tasks before returning, so async batches finish in-request.
