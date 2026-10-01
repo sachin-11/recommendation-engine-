@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ThumbsDown, ThumbsUp } from "lucide-react";
+import { Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 
 import { itemHref } from "@/components/items/ItemTable";
@@ -87,6 +87,16 @@ export function ResultCard({
 
         {typeof description === "string" && title !== description && (
           <p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>
+        )}
+
+        {result.reason && (
+          <p className="flex items-start gap-1.5 rounded-md bg-primary/5 px-2 py-1.5 text-xs">
+            <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-primary" aria-hidden />
+            <span>
+              <span className="sr-only">Why: </span>
+              {result.reason}
+            </span>
+          </p>
         )}
 
         <div className="space-y-1">

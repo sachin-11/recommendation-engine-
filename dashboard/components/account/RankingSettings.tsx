@@ -120,6 +120,42 @@ export function RankingSettings({ tenant }: { tenant: Tenant }) {
           ))}
         </fieldset>
 
+        <div className="space-y-4 rounded-lg border p-4">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="ranking-llm_rerank"
+              checked={ranking.llm_rerank}
+              onCheckedChange={(checked) => set({ llm_rerank: checked === true })}
+              disabled={!ranking.enabled || !canEdit}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="ranking-llm_rerank">LLM re-ranking</Label>
+              <p className="text-xs text-muted-foreground">
+                An OpenAI model reads the top results of text and profile queries, reorders them and explains each
+                in a sentence. The most accurate stage, and the slowest: about 1–3 s more per uncached query. Compare
+                it on the Evaluation page before turning it on.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <Label htmlFor="ranking-llm_candidates">Results the model reads</Label>
+              <span className="text-sm tabular-nums text-muted-foreground">{ranking.llm_candidates}</span>
+            </div>
+            <Slider
+              id="ranking-llm_candidates"
+              min={2}
+              max={20}
+              step={1}
+              value={[ranking.llm_candidates]}
+              onValueChange={([v]) => set({ llm_candidates: v })}
+              aria-label="Results the model reads"
+              disabled={!ranking.enabled || !ranking.llm_rerank || !canEdit}
+            />
+            <p className="text-xs text-muted-foreground">More catches more misranked items, and costs more time and tokens.</p>
+          </div>
+        </div>
+
         <div className="space-y-2 rounded-lg border p-4">
           <div className="flex items-baseline justify-between gap-2">
             <Label htmlFor="ranking-control_share">A/B test: control share</Label>

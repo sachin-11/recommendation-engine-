@@ -182,6 +182,8 @@ export interface Recommendation {
   score_label: string;
   metadata: Record<string, unknown>;
   raw_data?: Record<string, unknown> | null;
+  /** Why it fits the query; present when LLM re-ranking ordered the results. */
+  reason?: string;
 }
 
 export interface RecommendResponse {
@@ -191,6 +193,8 @@ export interface RecommendResponse {
   latency_ms: number;
   /** OpenAI tokens used to embed the query; 0 on cache hits and by-item queries. */
   embedding_tokens: number;
+  /** OpenAI chat tokens used by LLM re-ranking; 0 when off or cached. */
+  rerank_tokens?: number;
   request_id: string;
 }
 

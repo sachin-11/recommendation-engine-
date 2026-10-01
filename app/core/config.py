@@ -42,15 +42,17 @@ class Settings(BaseSettings):
     EMBEDDING_PRICE_PER_MILLION_TOKENS: float = Field(default=0.02, ge=0)
 
     # --- LLM re-ranking (OpenAI chat model) ---
-    RERANK_MODEL: str = "gpt-4o-mini"
+    # Measured on 10 candidates (2026-10): gpt-5.4-mini ~1.5 s, gpt-4o-mini ~3.2 s.
+    RERANK_MODEL: str = "gpt-5.4-mini"
     # A user is waiting: past this the results keep their previous order.
     RERANK_TIMEOUT_SECONDS: float = Field(default=4.0, gt=0)
     # Each candidate's text is cut to this many characters in the prompt.
     RERANK_ITEM_CHARS: int = Field(default=600, gt=0)
     RERANK_CACHE_TTL_SECONDS: int = Field(default=60 * 60, gt=0)
-    # USD per 1M tokens, for the cost shown with results (gpt-4o-mini: 0.15 in, 0.60 out).
-    RERANK_INPUT_PRICE_PER_MILLION_TOKENS: float = Field(default=0.15, ge=0)
-    RERANK_OUTPUT_PRICE_PER_MILLION_TOKENS: float = Field(default=0.60, ge=0)
+    # USD per 1M tokens, for the cost shown with results. Set them with RERANK_MODEL:
+    # gpt-5.4-mini 0.75 in / 4.50 out; gpt-4o-mini 0.15 / 0.60.
+    RERANK_INPUT_PRICE_PER_MILLION_TOKENS: float = Field(default=0.75, ge=0)
+    RERANK_OUTPUT_PRICE_PER_MILLION_TOKENS: float = Field(default=4.50, ge=0)
 
     # --- Pinecone ---
     PINECONE_API_KEY: SecretStr | None = None

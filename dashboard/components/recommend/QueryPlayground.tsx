@@ -244,6 +244,15 @@ function ResultsHeader({ result }: { result: RecommendResult }) {
       >
         {result.embedding_tokens} tokens
       </Badge>
+      {Boolean(result.rerank_tokens) && (
+        <Badge
+          variant="outline"
+          className="font-mono"
+          title="OpenAI chat tokens used by LLM re-ranking"
+        >
+          <Sparkles /> {result.rerank_tokens} rerank tokens
+        </Badge>
+      )}
       <span className="flex items-center gap-1 text-xs text-muted-foreground">
         query_id{" "}
         <code className="font-mono">{result.query_id.slice(0, 8)}…</code>

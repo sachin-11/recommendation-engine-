@@ -125,3 +125,20 @@ def test_parse_verdicts() -> None:
     assert parse_verdicts(content, 3) == {1: (10, "great"), 2: (0, "poor")}
     with pytest.raises(ValueError):
         parse_verdicts("{", 3)
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("gpt-5.4-mini", {"reasoning_effort": "none"}),
+        ("gpt-4o-mini", {"temperature": 0}),
+    ],
+)
+async def test_sampling_options_follow_the_model(
+    openai_client: FakeOpenAIClient, model: str, expected: dict[str, Any]
+) -> None:
+    await LLMReranker(openai_client, model=model).rerank(  # type: ignore[arg-type]
+        "q", _matches("a"), _candidates("a")
+    )
+    call = openai_client.chat.completions.calls[0]
+    assert {k: call[k] for k in ("reasoning_effort", "temperature") if k in call} == expected
