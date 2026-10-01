@@ -27,11 +27,14 @@ class ResultFormatter:
         raw_data: dict[str, dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """Rank matches best first: by `ranking_score` when the reranker set one, else
-        by similarity. `metadata` keeps only the tenant's filter fields; `raw_data` (looked
-        up by external_id) is added only when asked for."""
+        `retrieval_score` when hybrid search did, else by similarity. `metadata` keeps only
+        the tenant's filter fields; `raw_data` (looked up by external_id) is added only
+        when asked for."""
         filter_fields = set(tenant.domain_config.get("filter_fields") or [])
         ordered = sorted(
-            pinecone_matches, key=lambda m: m.get("ranking_score", m["score"]), reverse=True
+            pinecone_matches,
+            key=lambda m: m.get("ranking_score", m.get("retrieval_score", m["score"])),
+            reverse=True,
         )
         results: list[dict[str, Any]] = []
         for rank, match in enumerate(ordered, start=1):

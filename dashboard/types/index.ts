@@ -17,6 +17,8 @@ export interface RankingConfig {
   popularity?: number;
   /** 0–1: how far a query with a user_id leans toward items that user liked. */
   personalization?: number;
+  /** 0–1: hybrid search, how much exact keyword matches lift an item. 0 = vector only. */
+  keyword?: number;
   /** 0–1: A/B test share of traffic ordered by similarity alone. 0 runs no test. */
   control_share?: number;
 }

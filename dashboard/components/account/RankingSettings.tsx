@@ -22,6 +22,7 @@ const DEFAULTS: Required<RankingConfig> = {
   negative: 0.5,
   popularity: 0,
   personalization: 0.2,
+  keyword: 0,
   control_share: 0,
 };
 
@@ -36,6 +37,13 @@ const FIELDS: { key: NumericKey; label: string; hint: string; max: number; perce
     key: "personalization",
     label: "Personalization",
     hint: "With a user_id, lean toward items that user liked",
+    max: 1,
+    percent: true,
+  },
+  {
+    key: "keyword",
+    label: "Keyword match (hybrid search)",
+    hint: "Lift items containing the exact query words, e.g. codes or names",
     max: 1,
     percent: true,
   },

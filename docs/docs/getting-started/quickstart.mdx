@@ -315,6 +315,7 @@ Every few minutes, each item's feedback from the last 30 days is added up per im
   "negative": 0.5,
   "popularity": 0.0,
   "personalization": 0.2,
+  "keyword": 0.0,
   "control_share": 0.0
 }
 ```
@@ -323,7 +324,9 @@ Every few minutes, each item's feedback from the last 30 days is added up per im
 
 `personalization` (0–1) applies to requests with a `user_id`. The query leans toward the items that user clicked, liked, bought or applied to in the last 30 days: 0 ignores their history, 1 matches on it alone. A user with no history gets the same results as an anonymous request. For personalized requests, `score` is the similarity to the blended query.
 
-Set `enabled` to `false` to order by similarity to the query alone, with no feedback or personalization.
+`keyword` (0–1) turns on hybrid search for text and profile queries. Vector search finds items that mean the same as the query but can miss an exact term, such as a product code, a library or a name. With `keyword` above 0, items containing the query's words are also found by full-text search, and each is lifted by up to `keyword` (the best keyword match gets the full lift). An item found only by keyword still gets its `score` from its similarity to the query. Start around `0.2`; recommendations for similar items (`by-item`) stay purely semantic.
+
+Set `enabled` to `false` to order by similarity to the query alone, with no feedback, personalization or keyword matching.
 
 These weights can also be set in the dashboard under **Settings → Ranking**. Saving ranking needs the Admin role.
 

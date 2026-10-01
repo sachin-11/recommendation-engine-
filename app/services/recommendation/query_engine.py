@@ -46,6 +46,8 @@ from app.services.embedding.text_builder import TextBuilder
 from app.services.recommendation.cache import RecommendationCache
 from app.services.recommendation.experiment import assign_variant
 from app.services.recommendation.filter_builder import FilterBuilder
+from app.services.recommendation.hybrid import fuse, keyword_only_ids
+from app.services.recommendation.keyword_search import KeywordSearch
 from app.services.recommendation.personalization import Taste, liked_items
 from app.services.recommendation.reranker import Reranker, candidate_count, workspace_stats
 from app.services.recommendation.result_formatter import ResultFormatter
@@ -80,6 +82,14 @@ class BatchQuery:
     filters: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class SearchPlan:
+    """How one request searches, beyond the query itself."""
+
+    taste: Taste | None = None  # lean toward the user's liked items
+    keyword: float = 0.0  # weight of keyword matches in hybrid search; 0 = vector only
+
+
 def _unavailable(exc: Exception) -> ServiceUnavailableError:
     retry = {"Retry-After": str(RETRY_AFTER_SECONDS)}
     if isinstance(exc, VectorStoreTimeoutError):
@@ -109,6 +119,11 @@ def _upstream_errors() -> Iterator[None]:
         ) from exc
     except EmbeddingInputError as exc:
         raise BadRequestError(f"The query text was rejected by the embedding model: {exc}") from exc
+
+
+def _keyword_weight(config: RankingConfig, variant: RankingVariant) -> float:
+    # The A/B control is similarity to the query alone, so no keyword matching either.
+    return config.keyword if variant is RankingVariant.RERANKED else 0.0
 
 
 def _trace_inputs(**fields: str) -> Any:
@@ -163,6 +178,7 @@ class QueryEngine:
         self._text_builder = text_builder or TextBuilder()
         self._filter_builder = filter_builder or FilterBuilder()
         self._reranker = Reranker(session)
+        self._keywords = KeywordSearch(session)
 
     # --- Query types ---
 
@@ -188,8 +204,8 @@ class QueryEngine:
             filters,
             include_raw_data,
             user_id,
-            lambda pinecone_filter, k, taste: self._search_text(
-                query_text, tenant, k, pinecone_filter, taste
+            lambda pinecone_filter, k, plan: self._search_text(
+                query_text, tenant, k, pinecone_filter, plan
             ),
         )
 
@@ -217,8 +233,8 @@ class QueryEngine:
             filters,
             include_raw_data,
             user_id,
-            lambda pinecone_filter, k, taste: self._search_similar(
-                item, tenant, k, pinecone_filter, taste
+            lambda pinecone_filter, k, plan: self._search_similar(
+                item, tenant, k, pinecone_filter, plan.taste
             ),
         )
 
@@ -248,8 +264,8 @@ class QueryEngine:
             filters,
             include_raw_data,
             user_id,
-            lambda pinecone_filter, k, taste: self._search_text(
-                text, tenant, k, pinecone_filter, taste
+            lambda pinecone_filter, k, plan: self._search_text(
+                text, tenant, k, pinecone_filter, plan
             ),
         )
 
@@ -289,7 +305,14 @@ class QueryEngine:
         keys = {
             q.id: self._cache.key(
                 tenant.id,
-                {"type": QueryType.TEXT, "variant": variant, **personal, "query": q.query},
+                {
+                    "type": QueryType.TEXT,
+                    "variant": variant,
+                    # Any settings change takes effect at once, not after the cache TTL.
+                    "ranking": config.model_dump(),
+                    **personal,
+                    "query": q.query,
+                },
                 pinecone_filters[q.id],
                 top_k,
             )
@@ -333,7 +356,19 @@ class QueryEngine:
             # One OpenAI call covers all misses; split its tokens so the parts add up.
             base, extra = divmod(usage.tokens, len(misses))
             query_tokens = {q.id: base + (i < extra) for i, q in enumerate(misses)}
-            for query, matches in zip(misses, all_matches, strict=True):
+            keyword = _keyword_weight(config, variant)
+            for i, (query, matches) in enumerate(zip(misses, all_matches, strict=True)):
+                if keyword > 0:
+                    with _upstream_errors():
+                        matches = await self._hybrid(
+                            tenant,
+                            query.query,
+                            vectors[i],
+                            matches,
+                            pinecone_filters[query.id],
+                            fetch_k,
+                            keyword,
+                        )
                 if rerank and prior is not None:
                     matches = await self._reranker.rerank(tenant.id, matches, top_k, config, prior)
                 fresh[query.id] = self._formatter.format_results(matches, tenant)
@@ -364,10 +399,9 @@ class QueryEngine:
         filters: dict[str, Any] | None,
         include_raw_data: bool,
         user_id: str | None,
-        search: Callable[[dict[str, Any], int, Taste | None], Awaitable[Matches]],
+        search: Callable[[dict[str, Any], int, SearchPlan], Awaitable[Matches]],
     ) -> Recommendation:
-        """`search(pinecone_filter, k, taste)` returns the `k` nearest items, leaning
-        toward `taste` when there is one."""
+        """`search(pinecone_filter, k, plan)` returns the `k` best items for the plan."""
         pinecone_filter = self._filter_builder.build_pinecone_filter(filters, tenant.domain_config)
         config = ranking_config(tenant.domain_config)
         variant = assign_variant(config, tenant.id, user_id)
@@ -394,7 +428,14 @@ class QueryEngine:
         if not include_raw_data:
             key = self._cache.key(
                 tenant.id,
-                {"type": query_type, "variant": variant, **personal, **query_input},
+                {
+                    "type": query_type,
+                    "variant": variant,
+                    # Any settings change takes effect at once, not after the cache TTL.
+                    "ranking": config.model_dump(),
+                    **personal,
+                    **query_input,
+                },
                 pinecone_filter,
                 top_k,
             )
@@ -404,9 +445,12 @@ class QueryEngine:
         with track_embedding_usage() as usage:
             try:
                 with _upstream_errors():
-                    taste = await self._taste(tenant, config, history)
+                    plan = SearchPlan(
+                        taste=await self._taste(tenant, config, history),
+                        keyword=_keyword_weight(config, variant),
+                    )
                     matches = await self._ranked_search(
-                        tenant, top_k, config, variant, lambda k: search(pinecone_filter, k, taste)
+                        tenant, top_k, config, variant, lambda k: search(pinecone_filter, k, plan)
                     )
             finally:
                 # Tokens spent before a Pinecone failure still count.
@@ -464,14 +508,35 @@ class QueryEngine:
         tenant: Tenant,
         top_k: int,
         pinecone_filter: dict[str, Any],
-        taste: Taste | None,
+        plan: SearchPlan,
     ) -> Matches:
         vector = await self._embedder.embed_text(text)
-        if taste is not None:
-            vector = taste.apply(vector)
-        return await self._vector_store.query(
+        if plan.taste is not None:
+            vector = plan.taste.apply(vector)
+        matches = await self._vector_store.query(
             tenant.id, top_k=top_k, vector=vector, filter=pinecone_filter
         )
+        if plan.keyword <= 0:
+            return matches
+        return await self._hybrid(
+            tenant, text, vector, matches, pinecone_filter, top_k, plan.keyword
+        )
+
+    async def _hybrid(
+        self,
+        tenant: Tenant,
+        text: str,
+        query_vector: list[float],
+        vector_matches: Matches,
+        pinecone_filter: dict[str, Any],
+        k: int,
+        weight: float,
+    ) -> Matches:
+        """Vector matches fused with keyword matches for the same text and filters."""
+        keyword_matches = await self._keywords.search(tenant.id, text, pinecone_filter, k)
+        missing = keyword_only_ids(vector_matches, keyword_matches)
+        vectors = await self._vector_store.fetch_vectors(tenant.id, missing) if missing else {}
+        return fuse(vector_matches, keyword_matches, vectors, query_vector, weight, k)
 
     async def _search_similar(
         self,

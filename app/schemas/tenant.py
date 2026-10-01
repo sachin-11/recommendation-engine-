@@ -60,6 +60,15 @@ class RankingConfig(BaseModel):
             "0 ignores their history, 1 matches on history alone."
         ),
     )
+    keyword: float = Field(
+        default=0.0,
+        ge=0,
+        le=1,
+        description=(
+            "Hybrid search for text and profile queries: how much exact keyword matches "
+            "lift an item, on top of its similarity. 0 is vector search alone."
+        ),
+    )
     control_share: float = Field(
         default=0.0,
         ge=0,

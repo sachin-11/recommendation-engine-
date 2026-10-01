@@ -6967,6 +6967,14 @@
             "description": "With a user_id, how far the query leans toward items that user liked: 0 ignores their history, 1 matches on history alone.",
             "default": 0.2
           },
+          "keyword": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Keyword",
+            "description": "Hybrid search for text and profile queries: how much exact keyword matches lift an item, on top of its similarity. 0 is vector search alone.",
+            "default": 0.0
+          },
           "control_share": {
             "type": "number",
             "maximum": 1.0,

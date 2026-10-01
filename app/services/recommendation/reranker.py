@@ -1,6 +1,6 @@
 """Re-ranks vector-search candidates with what people did with them (item_stats).
 
-    ranking_score = similarity
+    ranking_score = retrieval score (similarity, plus the keyword lift in hybrid search)
                   + engagement * (engagement rate - workspace average)
                   + conversion * (conversion rate - workspace average)
                   - negative   * (negative rate   - workspace average)
@@ -34,6 +34,11 @@ Matches = list[dict[str, Any]]
 
 def candidate_count(top_k: int) -> int:
     return min(max(top_k * CANDIDATE_MULTIPLIER, top_k), MAX_CANDIDATES)
+
+
+def retrieval_score(match: dict[str, Any]) -> float:
+    """What the search ranked by: hybrid search's fused score, else the similarity."""
+    return float(match["retrieval_score"] if "retrieval_score" in match else match["score"])
 
 
 def external_id(match: dict[str, Any]) -> str:
@@ -103,7 +108,7 @@ class Reranker:
         scored = [
             {
                 **m,
-                "ranking_score": m["score"]
+                "ranking_score": retrieval_score(m)
                 + self._adjustment(stats.get(external_id(m)), config, prior),
             }
             for m in matches
