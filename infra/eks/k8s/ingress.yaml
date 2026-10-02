@@ -1,0 +1,21 @@
+# One public Application Load Balancer, made by the AWS Load Balancer Controller from this
+# Ingress. The API's paths go to the API (its /docs are off in production); everything else to the dashboard, which calls the
+# API on the same origin. Plain HTTP on the ALB's own hostname: no domain or certificate.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: recoengine
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    # Send traffic straight to pod IPs (each pod has a VPC address), not through node ports.
+    alb.ingress.kubernetes.io/target-type: ip
+    # Server-Sent Events (Ask) keep a connection open while the answer is written.
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=120
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - { path: /api, pathType: Prefix, backend: { service: { name: api, port: { number: 8000 } } } }
+          - { path: /health, pathType: Exact, backend: { service: { name: api, port: { number: 8000 } } } }
+          - { path: /, pathType: Prefix, backend: { service: { name: dashboard, port: { number: 3000 } } } }

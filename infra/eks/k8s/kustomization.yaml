@@ -13,6 +13,8 @@ resources:
   - api.yaml
   - worker.yaml
   - dashboard.yaml
+  - ingress.yaml
+  - api-hpa.yaml
 # The manifests name images by role; this maps them to ECR and the deployed tag.
 images:
   - name: recoengine-api
