@@ -1,9 +1,11 @@
 """Email verification, password reset and sign-in lockout (Module 6)."""
 
 import base64
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, update
@@ -14,6 +16,7 @@ from app.core.config import Settings, settings
 from app.core.email import (
     EmailMessage,
     MemoryEmailSender,
+    ResendEmailSender,
     SmtpEmailSender,
     mask_address,
     ses_sender,
@@ -430,8 +433,43 @@ def test_production_requires_smtp() -> None:
         "OPENAI_API_KEY": "sk-test",
         "PINECONE_API_KEY": "pc-test",
     }
-    with pytest.raises(ValueError, match="EMAIL_BACKEND must be 'smtp'"):
+    with pytest.raises(ValueError, match="EMAIL_BACKEND must be 'smtp', 'ses' or 'resend'"):
         Settings(**base, EMAIL_BACKEND="console")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="SMTP_HOST is required"):
         Settings(**base, EMAIL_BACKEND="smtp", SMTP_HOST="")  # type: ignore[arg-type]
     assert Settings(**base, EMAIL_BACKEND="smtp", SMTP_HOST="smtp.example.com")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="RESEND_API_KEY is required"):
+        Settings(**base, EMAIL_BACKEND="resend")  # type: ignore[arg-type]
+    assert Settings(**base, EMAIL_BACKEND="resend", RESEND_API_KEY="re_test")  # type: ignore[arg-type]
+
+
+async def test_resend_sender_posts_the_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "EMAIL_FROM", "RecoEngine <no-reply@example.com>")
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"id": "email-1"})
+
+    sender = ResendEmailSender(api_key="re_test", transport=httpx.MockTransport(handler))
+    await sender.send(EmailMessage(to="a@b.example", subject="Hi", text="plain", html="<p>h</p>"))
+
+    (request,) = requests
+    assert str(request.url) == "https://api.resend.com/emails"
+    assert request.headers["Authorization"] == "Bearer re_test"
+    assert json.loads(request.content) == {
+        "from": "RecoEngine <no-reply@example.com>",
+        "to": ["a@b.example"],
+        "subject": "Hi",
+        "text": "plain",
+        "html": "<p>h</p>",
+    }
+
+
+async def test_resend_errors_raise_with_the_reason() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"message": "The domain is not verified."})
+
+    sender = ResendEmailSender(api_key="re_test", transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="403.*not verified"):
+        await sender.send(EmailMessage(to="a@b.example", subject="Hi", text="t", html="h"))

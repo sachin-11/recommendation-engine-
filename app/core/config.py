@@ -124,8 +124,9 @@ class Settings(BaseSettings):
     # Where links in emails point (the dashboard), without a trailing slash.
     DASHBOARD_URL: str = "http://localhost:3000"
     # console: log emails (development). smtp: any SMTP server. ses: Amazon SES with the
-    # AWS_* credentials below. memory: keep them (tests).
-    EMAIL_BACKEND: Literal["console", "smtp", "ses", "memory"] = "console"
+    # AWS_* credentials below. resend: Resend's HTTPS API, for hosts that block outbound
+    # SMTP (Railway below the Pro plan). memory: keep them (tests).
+    EMAIL_BACKEND: Literal["console", "smtp", "ses", "resend", "memory"] = "console"
     EMAIL_FROM: str = "RecoEngine <no-reply@recoengine.local>"
     SMTP_HOST: str | None = None
     SMTP_PORT: int = Field(default=587, gt=0, le=65535)
@@ -139,6 +140,8 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
     AWS_ACCESS_KEY_ID: str | None = None
     AWS_SECRET_ACCESS_KEY: SecretStr | None = None
+    # Resend (EMAIL_BACKEND=resend). EMAIL_FROM must be on a domain verified in Resend.
+    RESEND_API_KEY: SecretStr | None = None
 
     # --- Operational ---
     HEALTH_CHECK_TIMEOUT_SECONDS: float = Field(default=2.0, gt=0)
@@ -185,6 +188,7 @@ class Settings(BaseSettings):
         "SMTP_USERNAME",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
+        "RESEND_API_KEY",
         "STRIPE_SECRET_KEY",
         "RECO_STRIPE_PRO_MONTHLY_PRICE_ID",
         "RECO_STRIPE_PRO_YEARLY_PRICE_ID",
@@ -244,9 +248,10 @@ class Settings(BaseSettings):
             problems.append("OPENAI_API_KEY is required")
         if not self.PINECONE_API_KEY:
             problems.append("PINECONE_API_KEY is required")
-        if self.EMAIL_BACKEND not in ("smtp", "ses"):
+        if self.EMAIL_BACKEND not in ("smtp", "ses", "resend"):
             problems.append(
-                "EMAIL_BACKEND must be 'smtp' or 'ses' so verification and reset emails are sent"
+                "EMAIL_BACKEND must be 'smtp', 'ses' or 'resend' so verification and reset"
+                " emails are sent"
             )
         elif self.EMAIL_BACKEND == "smtp" and not self.SMTP_HOST:
             problems.append("SMTP_HOST is required when EMAIL_BACKEND=smtp")
@@ -254,6 +259,8 @@ class Settings(BaseSettings):
             self.AWS_ACCESS_KEY_ID and self.AWS_SECRET_ACCESS_KEY
         ):
             problems.append("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required for SES")
+        elif self.EMAIL_BACKEND == "resend" and not self.RESEND_API_KEY:
+            problems.append("RESEND_API_KEY is required when EMAIL_BACKEND=resend")
         if "*" in self.ALLOWED_ORIGINS:
             problems.append("ALLOWED_ORIGINS must not contain '*'")
         if problems:

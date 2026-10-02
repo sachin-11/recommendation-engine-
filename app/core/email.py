@@ -3,6 +3,8 @@
 EMAIL_BACKEND picks the transport:
 - ``smtp``: send through any SMTP server (Resend, SES, SendGrid, Gmail, or Mailpit locally).
 - ``ses``: Amazon SES over SMTP, with the SMTP password derived from AWS_SECRET_ACCESS_KEY.
+- ``resend``: Resend's HTTPS API, for hosts that block outbound SMTP ports (Railway does
+  below its Pro plan).
 - ``console``: log the message, including its links, for local development without SMTP.
 - ``memory``: keep messages in ``MemoryEmailSender.outbox`` for tests.
 
@@ -21,6 +23,8 @@ from dataclasses import dataclass
 from email.message import EmailMessage as MimeMessage
 from email.utils import make_msgid
 from typing import Protocol
+
+import httpx
 
 from app.core.config import settings
 
@@ -131,11 +135,50 @@ def ses_sender() -> SmtpEmailSender:
     )
 
 
+class ResendEmailSender:
+    """Sends through Resend's HTTPS API (port 443), so it works where SMTP is blocked."""
+
+    URL = "https://api.resend.com/emails"
+
+    def __init__(
+        self, api_key: str | None = None, transport: httpx.AsyncBaseTransport | None = None
+    ) -> None:
+        resolved_key = api_key or (
+            settings.RESEND_API_KEY.get_secret_value() if settings.RESEND_API_KEY else None
+        )
+        if not resolved_key:
+            raise RuntimeError("RESEND_API_KEY is required when EMAIL_BACKEND=resend")
+        self._api_key = resolved_key
+        self._transport = transport
+
+    async def send(self, message: EmailMessage) -> None:
+        async with httpx.AsyncClient(
+            transport=self._transport, timeout=settings.SMTP_TIMEOUT_SECONDS
+        ) as client:
+            response = await client.post(
+                self.URL,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+                json={
+                    "from": settings.EMAIL_FROM,
+                    "to": [message.to],
+                    "subject": message.subject,
+                    "text": message.text,
+                    "html": message.html,
+                },
+            )
+        if response.is_error:
+            # Resend's error body names the problem (unverified domain, bad key) and holds
+            # no secrets; it ends up in the log line written by send_email.
+            raise RuntimeError(f"Resend answered {response.status_code}: {response.text[:300]}")
+
+
 def get_email_sender() -> EmailSender:
     if settings.EMAIL_BACKEND == "smtp":
         return SmtpEmailSender()
     if settings.EMAIL_BACKEND == "ses":
         return ses_sender()
+    if settings.EMAIL_BACKEND == "resend":
+        return ResendEmailSender()
     if settings.EMAIL_BACKEND == "memory":
         return MemoryEmailSender()
     return ConsoleEmailSender()

@@ -55,8 +55,9 @@ COPY --chown=appuser:appuser . .
 USER appuser
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)" || exit 1
-# Migrations are run by the deploy (scripts/deploy.sh), once, not by every replica.
+# Migrations are run by the deploy (scripts/deploy.sh, or Railway's pre-deploy command), once,
+# not by every replica. PORT is set by platforms such as Railway; 8000 otherwise.
 # PROMETHEUS_MULTIPROC_DIR lets /metrics add up the counters of every uvicorn process; it is
 # emptied on start so counters of a previous run do not linger. Only the API sets it: the
 # worker runs another command from this image and keeps plain in-process metrics.
-CMD ["sh", "-c", "export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus-metrics && rm -rf \"$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$PROMETHEUS_MULTIPROC_DIR\" && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*' --workers ${WEB_CONCURRENCY:-2}"]
+CMD ["sh", "-c", "export PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus-metrics && rm -rf \"$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$PROMETHEUS_MULTIPROC_DIR\" && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*' --workers ${WEB_CONCURRENCY:-2}"]
