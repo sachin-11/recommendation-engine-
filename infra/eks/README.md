@@ -32,6 +32,12 @@ $(terraform output -raw kubeconfig_command)               # point kubectl at the
 kubectl get nodes
 ```
 
+Then build the images and push them to ECR, tagged with the git commit:
+
+```bash
+./build-and-push.sh
+```
+
 ## Tear down
 
 Kubernetes creates some AWS resources itself (the load balancer of an ingress, the EBS
