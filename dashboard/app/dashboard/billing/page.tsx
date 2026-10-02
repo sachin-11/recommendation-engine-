@@ -62,6 +62,16 @@ function UsageMeter({ label, used, cap }: { label: string; used: number; cap: nu
 }
 
 function SubscriptionNote({ billing }: { billing: Billing }) {
+  if (billing.complimentary)
+    return (
+      <p className="text-sm text-muted-foreground">
+        Complimentary Pro from the RecoEngine team
+        {billing.complimentary_until
+          ? `, until ${formatDate(billing.complimentary_until, false)}. After that your own plan applies.`
+          : "."}{" "}
+        No payment needed.
+      </p>
+    );
   const end = billing.current_period_end ? formatDate(billing.current_period_end, false) : null;
   const status = billing.subscription_status;
   if (billing.subscribed_plan === "FREE" || !status) return null;

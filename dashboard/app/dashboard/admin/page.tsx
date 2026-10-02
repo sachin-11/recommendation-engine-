@@ -9,14 +9,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Coins,
-  Database,
+  CreditCard,
   Search,
   ShieldCheck,
 } from "lucide-react";
 
 import { OverviewCards, type Stat } from "@/components/analytics/OverviewCards";
 import { RecommendationChart } from "@/components/analytics/RecommendationChart";
-import { NotPlatformAdmin, WorkspaceStatusBadge } from "@/components/admin/WorkspaceStatusBadge";
+import {
+  NotPlatformAdmin,
+  WorkspacePlanBadge,
+  WorkspaceStatusBadge,
+} from "@/components/admin/WorkspaceStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, NativeSelect } from "@/components/ui/input";
@@ -56,7 +60,7 @@ function PlatformStats() {
       hint: data && (
         <>
           {formatNumber(data.workspaces_active)} active · {formatNumber(data.workspaces_suspended)} suspended ·{" "}
-          {formatNumber(data.workspaces_new_last_30_days)} new in 30 days
+          {formatNumber(data.workspaces_new_last_30_days)} new in 30 days · {formatNumber(data.users_total)} users
         </>
       ),
     },
@@ -64,13 +68,22 @@ function PlatformStats() {
       label: "Recommendations this month",
       value: formatNumber(data?.queries_this_month),
       icon: Activity,
-      hint: data && <>{formatNumber(data.queries_today)} today</>,
+      hint: data && (
+        <>
+          {formatNumber(data.queries_today)} today · {formatNumber(data.items_total)} items stored
+        </>
+      ),
     },
     {
-      label: "Items",
-      value: formatNumber(data?.items_total),
-      icon: Database,
-      hint: data && <>{formatNumber(data.users_total)} users</>,
+      label: "Pro workspaces",
+      value: data ? formatNumber(data.pro_paying + data.pro_complimentary) : "—",
+      icon: CreditCard,
+      hint: data && (
+        <>
+          {formatNumber(data.pro_paying)} paying · {formatNumber(data.pro_complimentary)} complimentary
+          {data.payments_past_due > 0 && <> · {formatNumber(data.payments_past_due)} past due</>}
+        </>
+      ),
     },
     {
       label: "OpenAI cost this month",
@@ -194,6 +207,7 @@ function WorkspaceTable() {
               <TableRow className="hover:bg-transparent">
                 <TableHead>Workspace</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Plan</TableHead>
                 <TableHead className="hidden text-right md:table-cell">Items</TableHead>
                 <TableHead className="text-right">Queries (month)</TableHead>
                 <TableHead className="hidden text-right lg:table-cell">Cost (month)</TableHead>
@@ -221,6 +235,9 @@ function WorkspaceTable() {
                   </TableCell>
                   <TableCell>
                     <WorkspaceStatusBadge status={w.status} />
+                  </TableCell>
+                  <TableCell>
+                    <WorkspacePlanBadge billing={w.billing} />
                   </TableCell>
                   <TableCell className="hidden text-right tabular-nums md:table-cell">
                     {formatNumber(w.items)}
@@ -286,7 +303,7 @@ export default function AdminPage() {
     <>
       <PageHeader
         title="Platform admin"
-        description="Every workspace on the platform: usage, cost, suspension and limits."
+        description="Every workspace on the platform: usage, cost, plans, suspension and limits."
       />
       {me?.user?.is_platform_admin ? (
         <div className="space-y-6">

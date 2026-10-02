@@ -326,6 +326,25 @@ export interface WorkspaceLimits {
   rate_limit_rpm: number | null;
 }
 
+export interface WorkspaceBilling {
+  /** The plan in force now. */
+  plan: Plan;
+  /** The plan paid for, which may have lapsed. */
+  subscribed_plan: Plan;
+  subscription_status: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  /** The customer in Stripe's dashboard; null before a first checkout. */
+  stripe_customer_url: string | null;
+  /** Pro given by a platform admin, in force now. */
+  complimentary: boolean;
+  complimentary_since: string | null;
+  /** Null with complimentary: no end. */
+  complimentary_until: string | null;
+  /** Internal note, never shown to the workspace. */
+  complimentary_reason: string | null;
+}
+
 export interface WorkspaceSummary {
   id: string;
   name: string;
@@ -341,6 +360,7 @@ export interface WorkspaceSummary {
   estimated_cost_this_month_usd: number;
   last_active_at: string | null;
   limits: WorkspaceLimits;
+  billing: WorkspaceBilling;
 }
 
 export interface WorkspaceList {
@@ -374,6 +394,12 @@ export interface PlatformOverview {
   queries_this_month: number;
   tokens_this_month: number;
   estimated_cost_this_month_usd: number;
+  /** Workspaces whose Pro subscription is in force. */
+  pro_paying: number;
+  /** Workspaces with complimentary Pro now. */
+  pro_complimentary: number;
+  /** Subscriptions whose last payment failed. */
+  payments_past_due: number;
   queries_daily: { date: string; count: number }[];
   top_workspaces: { id: string; name: string; queries_this_month: number; tokens_this_month: number }[];
 }
@@ -464,6 +490,10 @@ export interface Billing {
   subscription_status: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
+  /** Pro given by the platform, without a subscription. */
+  complimentary: boolean;
+  /** When complimentary Pro ends; null with complimentary: no end. */
+  complimentary_until: string | null;
   allowance: Allowance;
   usage: { items: number; queries_this_month: number };
   plans: { plan: Plan; allowance: Allowance }[];

@@ -2,17 +2,33 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Activity, ArrowLeft, Ban, Coins, Database, Loader2, PlayCircle, SearchX, Users } from "lucide-react";
+import {
+  Activity,
+  ArrowLeft,
+  Ban,
+  Coins,
+  Database,
+  ExternalLink,
+  Gift,
+  Loader2,
+  PlayCircle,
+  SearchX,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
-import { NotPlatformAdmin, WorkspaceStatusBadge } from "@/components/admin/WorkspaceStatusBadge";
+import {
+  NotPlatformAdmin,
+  WorkspacePlanBadge,
+  WorkspaceStatusBadge,
+} from "@/components/admin/WorkspaceStatusBadge";
 import { OverviewCards, type Stat } from "@/components/analytics/OverviewCards";
 import { RecommendationChart } from "@/components/analytics/RecommendationChart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Input, Textarea } from "@/components/ui/input";
+import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { FieldError, Label } from "@/components/ui/label";
 import { EmptyState, PageHeader } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +37,8 @@ import { apiErrorMessage, toastApiError } from "@/lib/api";
 import { useMe } from "@/lib/hooks/account";
 import {
   useActivateWorkspace,
+  useGrantComplimentary,
+  useRevokeComplimentary,
   useSuspendWorkspace,
   useUpdateLimits,
   useWorkspace,
@@ -116,6 +134,152 @@ function LimitsCard({ workspace }: { workspace: WorkspaceDetail }) {
             Save limits
           </Button>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+const COMP_DURATIONS = [
+  { value: "30", label: "30 days" },
+  { value: "90", label: "90 days" },
+  { value: "365", label: "1 year" },
+  { value: "", label: "Until I end it" },
+];
+
+function subscriptionText(billing: WorkspaceDetail["billing"]): string {
+  if (!billing.subscription_status) return "None";
+  const plan = billing.subscribed_plan === "PRO" ? "Pro" : "Free";
+  const end = billing.current_period_end ? formatDate(billing.current_period_end, false) : null;
+  const when = end ? (billing.cancel_at_period_end ? ` · ends ${end}` : ` · renews ${end}`) : "";
+  return `${plan} · ${billing.subscription_status}${when}`;
+}
+
+/** What the workspace pays for, and complimentary Pro: the exception to self-serve billing. */
+function BillingCard({ workspace }: { workspace: WorkspaceDetail }) {
+  const { billing } = workspace;
+  const grant = useGrantComplimentary();
+  const revoke = useRevokeComplimentary();
+  const [duration, setDuration] = React.useState("30");
+  const [reason, setReason] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+
+  const give = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!reason.trim()) {
+      setError("Say why, for other admins.");
+      return;
+    }
+    setError(null);
+    grant.mutate(
+      { id: workspace.id, days: duration ? Number(duration) : null, reason: reason.trim() },
+      {
+        onSuccess: () => {
+          toast.success(`${workspace.name} is on Pro`);
+          setReason("");
+        },
+        onError: (e) => setError(apiErrorMessage(e)),
+      },
+    );
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Billing</CardTitle>
+        <CardDescription>
+          Workspaces upgrade and cancel themselves through Stripe. Complimentary Pro is for exceptions: a demo, a
+          partner, a support case.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-6 lg:grid-cols-2">
+        <dl className="space-y-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Plan in force</dt>
+            <dd>
+              <WorkspacePlanBadge billing={billing} />
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Stripe subscription</dt>
+            <dd className="text-right">{subscriptionText(billing)}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Stripe customer</dt>
+            <dd>
+              {billing.stripe_customer_url ? (
+                <a
+                  href={billing.stripe_customer_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  Open in Stripe <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              ) : (
+                <span className="text-muted-foreground">No checkout yet</span>
+              )}
+            </dd>
+          </div>
+        </dl>
+
+        {billing.complimentary ? (
+          <div className="space-y-3 rounded-lg border border-success/40 bg-success/5 p-4 text-sm">
+            <p className="font-medium">
+              Complimentary Pro since {formatDate(billing.complimentary_since, false)}
+              {billing.complimentary_until
+                ? `, until ${formatDate(billing.complimentary_until, false)}`
+                : ", with no end date"}
+            </p>
+            {billing.complimentary_reason && <p className="text-muted-foreground">{billing.complimentary_reason}</p>}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={revoke.isPending}
+              onClick={() =>
+                revoke.mutate(workspace.id, {
+                  onSuccess: () => toast.success("Complimentary Pro ended"),
+                  onError: (e) => toastApiError(e, "Could not end complimentary Pro"),
+                })
+              }
+            >
+              {revoke.isPending && <Loader2 className="animate-spin" />}
+              End complimentary Pro
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={give} className="space-y-3" noValidate>
+            <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+              <div className="space-y-1.5">
+                <Label htmlFor="compDuration">Give Pro for</Label>
+                <NativeSelect id="compDuration" value={duration} onChange={(e) => setDuration(e.target.value)}>
+                  {COMP_DURATIONS.map((d) => (
+                    <option key={d.label} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="compReason">Reason (internal)</Label>
+                <Input
+                  id="compReason"
+                  value={reason}
+                  maxLength={500}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. Demo for Acme"
+                />
+              </div>
+            </div>
+            <FieldError message={error ?? undefined} />
+            <Button type="submit" disabled={grant.isPending}>
+              {grant.isPending ? <Loader2 className="animate-spin" /> : <Gift />} Give Pro
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              No payment and no change to a Stripe subscription. The workspace sees that it is on complimentary Pro and
+              when it ends, never the reason.
+            </p>
+          </form>
+        )}
       </CardContent>
     </Card>
   );
@@ -277,6 +441,7 @@ export default function WorkspacePage({ params }: { params: { id: string } }) {
         actions={
           <div className="flex items-center gap-3">
             <WorkspaceStatusBadge status={workspace.status} />
+            <WorkspacePlanBadge billing={workspace.billing} />
             {action}
           </div>
         }
@@ -293,6 +458,8 @@ export default function WorkspacePage({ params }: { params: { id: string } }) {
 
       <div className="space-y-6">
         <OverviewCards stats={stats} />
+
+        <BillingCard workspace={workspace} />
 
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">

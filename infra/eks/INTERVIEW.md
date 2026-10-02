@@ -285,6 +285,23 @@ Each module was built in phases, tested and committed separately.
     subscription from Stripe** instead of trusting the event payload.
 - `BILLING_ENABLED=false` (the default) means self-hosted: no limits, every feature on.
 
+### Module 15 — Billing in the platform admin, and complimentary Pro
+- **Two roles, two views:**
+  - A workspace owner manages their own billing (self-serve, through Stripe).
+  - A platform admin sees everyone's billing: the plan in force, the Stripe status and renewal,
+    a link to the customer in Stripe, and counts of paid Pro, complimentary Pro and payments
+    past due.
+- **Complimentary Pro** is the exception to self-serve:
+  - Pro without a subscription, for a demo, a partner or a support case.
+  - For a number of days or until revoked, with an internal reason the workspace never sees.
+  - It does not touch Stripe. When it ends, the workspace falls back to what it pays for, or
+    Free.
+- **One rule decides the plan** (): complimentary Pro first, then a paid plan
+  while its subscription is in force, else Free. Limits, LLM features and the billing page all
+  read that one function.
+- **Security:** there is no API for a workspace to give itself Pro; only a platform admin
+  session can, and integration API keys are refused on admin routes.
+
 ## Engineering practices worth mentioning
 
 - **Tests:**

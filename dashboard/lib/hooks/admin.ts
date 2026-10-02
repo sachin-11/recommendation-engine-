@@ -87,3 +87,16 @@ export function useUpdateLimits() {
       (await api.patch<WorkspaceDetail>(`/admin/workspaces/${id}/limits`, limits)).data,
   );
 }
+
+export function useGrantComplimentary() {
+  return useWorkspaceMutation(
+    async ({ id, days, reason }: { id: string; days: number | null; reason: string }) =>
+      (await api.put<WorkspaceDetail>(`/admin/workspaces/${id}/complimentary`, { days, reason })).data,
+  );
+}
+
+export function useRevokeComplimentary() {
+  return useWorkspaceMutation(
+    async (id: string) => (await api.delete<WorkspaceDetail>(`/admin/workspaces/${id}/complimentary`)).data,
+  );
+}
