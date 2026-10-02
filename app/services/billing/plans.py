@@ -10,13 +10,16 @@ With it on, the plan applies:
 
 A limit a platform admin set on the workspace (Module 9) takes precedence over the plan's.
 PRO counts only while its Stripe subscription is active, trialing or past_due; past_due
-is a grace period while Stripe retries the payment.
+is a grace period while Stripe retries the payment. A platform admin can also give PRO
+without a subscription, for a time or for good (complimentary Pro).
 """
 
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 
 from app.core.config import settings
 from app.core.exceptions import PlanRequiredError
+from app.models.base import utcnow
 from app.models.tenant import Plan, Tenant
 
 # Stripe subscription statuses in which a paid plan is in force.
@@ -44,8 +47,22 @@ PLANS: dict[Plan, Allowance] = {
 UNLIMITED = Allowance(max_items=None, monthly_queries=None, rate_limit_rpm=None, llm_features=True)
 
 
+def is_complimentary(tenant: Tenant, now: datetime | None = None) -> bool:
+    """Whether a platform admin's complimentary Pro is in force."""
+    if tenant.comp_pro_since is None:
+        return False
+    until = tenant.comp_pro_until
+    if until is None:
+        return True
+    # SQLite returns naive datetimes; everything is stored in UTC.
+    return (until if until.tzinfo else until.replace(tzinfo=UTC)) > (now or utcnow())
+
+
 def entitled_plan(tenant: Tenant) -> Plan:
-    """The plan in force: a paid plan whose subscription lapsed falls back to FREE."""
+    """The plan in force: complimentary Pro, else the paid plan while its subscription is
+    in force; a paid plan whose subscription lapsed falls back to FREE."""
+    if is_complimentary(tenant):
+        return Plan.PRO
     if tenant.plan is Plan.FREE:
         return Plan.FREE
     return tenant.plan if tenant.subscription_status in PAID_STATUSES else Plan.FREE

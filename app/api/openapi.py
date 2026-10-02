@@ -387,6 +387,16 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "fields sent change; null restores the default. Uploads past `max_items` and queries "
         "past the monthly limit get 403 `limit_exceeded`.",
     ),
+    ("put", "/api/v1/admin/workspaces/{tenant_id}/complimentary"): (
+        "grantComplimentaryPro",
+        "Platform admin: give the workspace Pro without a subscription, for `days` or, with "
+        "`days` null, until revoked. Replaces an earlier grant and leaves any Stripe "
+        "subscription alone. `reason` is an internal note the workspace never sees.",
+    ),
+    ("delete", "/api/v1/admin/workspaces/{tenant_id}/complimentary"): (
+        "revokeComplimentaryPro",
+        "Platform admin: end complimentary Pro now. The workspace keeps any plan it pays for.",
+    ),
 }
 
 HR_ITEMS = [

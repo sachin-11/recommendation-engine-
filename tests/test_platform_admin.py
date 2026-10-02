@@ -1,14 +1,20 @@
 """Platform admin area: access, workspace list and detail, suspension, limits."""
 
+import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from pydantic import SecretStr
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import settings
+from app.models import Tenant
+from app.models.tenant import Plan
 from app.models.user import User
+from app.services.billing.plans import entitled_plan, is_complimentary
 from tests.conftest import TEST_PASSWORD, TenantAuth, register_tenant
 
 ADMIN = "/api/v1/admin"
@@ -296,3 +302,140 @@ async def test_limits_validation(
     url = f"{ADMIN}/workspaces/{hr_tenant.tenant_id}/limits"
     for body in ({"max_items": 0}, {"rate_limit_rpm": -1}, {"unknown": 1}):
         assert (await client.patch(url, json=body, headers=operator)).status_code == 422
+
+
+# --- Billing and complimentary Pro ---
+
+
+async def _set_tenant(
+    session_factory: async_sessionmaker[AsyncSession], tenant_id: str, **fields: Any
+) -> None:
+    async with session_factory() as session:
+        await session.execute(
+            update(Tenant).where(Tenant.id == uuid.UUID(tenant_id)).values(**fields)
+        )
+        await session.commit()
+
+
+async def test_complimentary_pro_from_grant_to_revoke(
+    client: AsyncClient,
+    hr_tenant: TenantAuth,
+    operator: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "BILLING_ENABLED", True)
+    url = f"{ADMIN}/workspaces/{hr_tenant.tenant_id}/complimentary"
+    before = (
+        await client.get(f"{ADMIN}/workspaces/{hr_tenant.tenant_id}", headers=operator)
+    ).json()
+    assert before["billing"]["plan"] == "FREE"
+    assert before["billing"]["complimentary"] is False
+
+    granted = await client.put(url, json={"days": 30, "reason": "Demo for Acme"}, headers=operator)
+
+    assert granted.status_code == 200, granted.text
+    billing = granted.json()["billing"]
+    assert billing["plan"] == "PRO" and billing["subscribed_plan"] == "FREE"
+    assert billing["complimentary"] is True
+    assert billing["complimentary_reason"] == "Demo for Acme"
+    until = datetime.fromisoformat(billing["complimentary_until"])
+    assert abs(until - datetime.now(UTC) - timedelta(days=30)) < timedelta(minutes=1)
+
+    # The workspace sees Pro with its end date, and gets the LLM features; not the reason.
+    own = (await client.get("/api/v1/billing", headers=hr_tenant.headers)).json()
+    assert own["plan"] == "PRO" and own["complimentary"] is True
+    assert own["complimentary_until"] is not None
+    assert own["allowance"]["llm_features"] is True
+    assert "Demo for Acme" not in str(own)
+
+    overview = (await client.get(f"{ADMIN}/overview", headers=operator)).json()
+    assert (overview["pro_complimentary"], overview["pro_paying"]) == (1, 0)
+    listed = (await client.get(f"{ADMIN}/workspaces", headers=operator)).json()["workspaces"]
+    assert {w["id"]: w["billing"]["plan"] for w in listed}[hr_tenant.tenant_id] == "PRO"
+
+    revoked = await client.delete(url, headers=operator)
+
+    assert revoked.json()["billing"]["plan"] == "FREE"
+    assert revoked.json()["billing"]["complimentary_since"] is None
+    own = (await client.get("/api/v1/billing", headers=hr_tenant.headers)).json()
+    assert (own["plan"], own["complimentary"], own["allowance"]["llm_features"]) == (
+        "FREE",
+        False,
+        False,
+    )
+
+
+async def test_complimentary_pro_without_an_end(
+    client: AsyncClient, hr_tenant: TenantAuth, operator: dict[str, str]
+) -> None:
+    response = await client.put(
+        f"{ADMIN}/workspaces/{hr_tenant.tenant_id}/complimentary",
+        json={"reason": "Partner"},
+        headers=operator,
+    )
+
+    billing = response.json()["billing"]
+    assert billing["complimentary"] is True and billing["complimentary_until"] is None
+
+
+def test_complimentary_pro_ends_on_its_date() -> None:
+    now = datetime.now(UTC)
+    base: dict[str, Any] = {"plan": Plan.FREE, "subscription_status": None}
+    expired = Tenant(**base, comp_pro_since=now - timedelta(days=31), comp_pro_until=now)
+    running = Tenant(**base, comp_pro_since=now, comp_pro_until=now + timedelta(days=1))
+    endless = Tenant(**base, comp_pro_since=now, comp_pro_until=None)
+
+    assert not is_complimentary(expired) and entitled_plan(expired) is Plan.FREE
+    assert is_complimentary(running) and entitled_plan(running) is Plan.PRO
+    assert is_complimentary(endless) and entitled_plan(endless) is Plan.PRO
+    assert not is_complimentary(Tenant(**base, comp_pro_since=None))
+
+
+async def test_complimentary_validation_and_access(
+    client: AsyncClient, hr_tenant: TenantAuth, operator: dict[str, str]
+) -> None:
+    url = f"{ADMIN}/workspaces/{hr_tenant.tenant_id}/complimentary"
+    assert (
+        await client.put(url, json={"days": 0, "reason": "x"}, headers=operator)
+    ).status_code == 422
+    assert (await client.put(url, json={"days": 30}, headers=operator)).status_code == 422
+    assert (await client.put(url, json={"reason": "  "}, headers=operator)).status_code == 422
+    missing = f"{ADMIN}/workspaces/00000000-0000-0000-0000-000000000000/complimentary"
+    assert (await client.put(missing, json={"reason": "x"}, headers=operator)).status_code == 404
+    # A workspace owner cannot give themselves Pro.
+    owner = await sign_in(client, "hr@acme.example")
+    assert (await client.put(url, json={"reason": "me"}, headers=owner)).status_code == 403
+
+
+async def test_billing_in_the_admin_views(
+    client: AsyncClient,
+    hr_tenant: TenantAuth,
+    food_tenant: TenantAuth,
+    operator: dict[str, str],
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", SecretStr("sk_test_example"))
+    await _set_tenant(
+        session_factory,
+        hr_tenant.tenant_id,
+        plan=Plan.PRO,
+        subscription_status="active",
+        stripe_customer_id="cus_hr",
+    )
+    await _set_tenant(
+        session_factory, food_tenant.tenant_id, plan=Plan.PRO, subscription_status="past_due"
+    )
+
+    detail = (
+        await client.get(f"{ADMIN}/workspaces/{hr_tenant.tenant_id}", headers=operator)
+    ).json()
+    overview = (await client.get(f"{ADMIN}/overview", headers=operator)).json()
+
+    assert detail["billing"]["plan"] == "PRO"
+    assert detail["billing"]["subscription_status"] == "active"
+    assert detail["billing"]["stripe_customer_url"] == (
+        "https://dashboard.stripe.com/test/customers/cus_hr"
+    )
+    # past_due is a grace period: still Pro, and counted as both paying and past due.
+    assert (overview["pro_paying"], overview["payments_past_due"]) == (2, 1)

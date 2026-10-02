@@ -5935,6 +5935,192 @@
         },
         "description": "Platform admin: set `max_items`, `monthly_query_limit` and `rate_limit_rpm`. Only the fields sent change; null restores the default. Uploads past `max_items` and queries past the monthly limit get 403 `limit_exceeded`."
       }
+    },
+    "/api/v1/admin/workspaces/{tenant_id}/complimentary": {
+      "put": {
+        "tags": [
+          "Platform admin"
+        ],
+        "summary": "Give complimentary Pro",
+        "description": "Pro without a subscription, for a number of days or until revoked. Replaces an earlier grant. Has no effect on a Stripe subscription.",
+        "operationId": "grantComplimentaryPro",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComplimentaryGrant"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Platform admin"
+        ],
+        "summary": "End complimentary Pro",
+        "operationId": "revokeComplimentaryPro",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (see Retry-After)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Platform admin: end complimentary Pro now. The workspace keeps any plan it pays for."
+      }
     }
   },
   "components": {
@@ -6735,6 +6921,24 @@
             "type": "boolean",
             "title": "Cancel At Period End"
           },
+          "complimentary": {
+            "type": "boolean",
+            "title": "Complimentary",
+            "description": "Pro given by the platform, without a subscription."
+          },
+          "complimentary_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complimentary Until",
+            "description": "When complimentary Pro ends; null with complimentary: no end."
+          },
           "allowance": {
             "$ref": "#/components/schemas/AllowanceOut",
             "description": "Limits in force, admin overrides included."
@@ -6767,6 +6971,8 @@
           "subscription_status",
           "current_period_end",
           "cancel_at_period_end",
+          "complimentary",
+          "complimentary_until",
           "allowance",
           "usage",
           "plans",
@@ -6846,6 +7052,37 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CheckoutRequest"
+      },
+      "ComplimentaryGrant": {
+        "properties": {
+          "days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 3650.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days",
+            "description": "How long it lasts; null: until revoked."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Why, for other admins (e.g. 'Demo for Acme'). Not shown to the workspace."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ComplimentaryGrant"
       },
       "CsvUploadResponse": {
         "properties": {
@@ -8467,6 +8704,21 @@
             "type": "number",
             "title": "Estimated Cost This Month Usd"
           },
+          "pro_paying": {
+            "type": "integer",
+            "title": "Pro Paying",
+            "description": "Workspaces whose Pro subscription is in force."
+          },
+          "pro_complimentary": {
+            "type": "integer",
+            "title": "Pro Complimentary",
+            "description": "Workspaces with complimentary Pro now."
+          },
+          "payments_past_due": {
+            "type": "integer",
+            "title": "Payments Past Due",
+            "description": "Subscriptions whose last payment failed."
+          },
           "queries_daily": {
             "items": {
               "$ref": "#/components/schemas/DailyCount"
@@ -8496,6 +8748,9 @@
           "queries_this_month",
           "tokens_this_month",
           "estimated_cost_this_month_usd",
+          "pro_paying",
+          "pro_complimentary",
+          "payments_past_due",
           "queries_daily",
           "top_workspaces"
         ],
@@ -9824,6 +10079,114 @@
         ],
         "title": "VerifyEmailRequest"
       },
+      "WorkspaceBillingOut": {
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/Plan",
+            "description": "The plan in force now."
+          },
+          "subscribed_plan": {
+            "$ref": "#/components/schemas/Plan",
+            "description": "The plan paid for, which may have lapsed."
+          },
+          "subscription_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Status",
+            "description": "Stripe's status: active, trialing, past_due, canceled, ..."
+          },
+          "current_period_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Period End"
+          },
+          "cancel_at_period_end": {
+            "type": "boolean",
+            "title": "Cancel At Period End"
+          },
+          "stripe_customer_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stripe Customer Url",
+            "description": "The customer in Stripe's dashboard; null before a first checkout."
+          },
+          "complimentary": {
+            "type": "boolean",
+            "title": "Complimentary",
+            "description": "Pro given by a platform admin, in force now."
+          },
+          "complimentary_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complimentary Since"
+          },
+          "complimentary_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complimentary Until",
+            "description": "Null with complimentary: no end."
+          },
+          "complimentary_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complimentary Reason",
+            "description": "Internal note; not shown to the workspace."
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan",
+          "subscribed_plan",
+          "subscription_status",
+          "current_period_end",
+          "cancel_at_period_end",
+          "stripe_customer_url",
+          "complimentary",
+          "complimentary_since",
+          "complimentary_until",
+          "complimentary_reason"
+        ],
+        "title": "WorkspaceBillingOut"
+      },
       "WorkspaceDetail": {
         "properties": {
           "id": {
@@ -9896,6 +10259,9 @@
           },
           "limits": {
             "$ref": "#/components/schemas/WorkspaceLimitsOut"
+          },
+          "billing": {
+            "$ref": "#/components/schemas/WorkspaceBillingOut"
           },
           "suspended_at": {
             "anyOf": [
@@ -9978,6 +10344,7 @@
           "estimated_cost_this_month_usd",
           "last_active_at",
           "limits",
+          "billing",
           "suspended_at",
           "suspended_reason",
           "email_verified",
@@ -10164,6 +10531,9 @@
           },
           "limits": {
             "$ref": "#/components/schemas/WorkspaceLimitsOut"
+          },
+          "billing": {
+            "$ref": "#/components/schemas/WorkspaceBillingOut"
           }
         },
         "type": "object",
@@ -10181,7 +10551,8 @@
           "tokens_this_month",
           "estimated_cost_this_month_usd",
           "last_active_at",
-          "limits"
+          "limits",
+          "billing"
         ],
         "title": "WorkspaceSummary"
       }

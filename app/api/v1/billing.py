@@ -30,7 +30,13 @@ from app.schemas.billing import (
     UsageOut,
 )
 from app.schemas.common import ErrorResponse
-from app.services.billing.plans import PLANS, Allowance, allowance, entitled_plan
+from app.services.billing.plans import (
+    PLANS,
+    Allowance,
+    allowance,
+    entitled_plan,
+    is_complimentary,
+)
 from app.services.billing.stripe_billing import StripeBillingDep, get_stripe_client, price_for
 from app.services.billing.webhooks import SubscriptionSync
 from app.services.workspace_limits import month_start
@@ -73,6 +79,8 @@ async def get_billing(
         subscription_status=tenant.subscription_status,
         current_period_end=tenant.current_period_end,
         cancel_at_period_end=tenant.cancel_at_period_end,
+        complimentary=is_complimentary(tenant),
+        complimentary_until=tenant.comp_pro_until if is_complimentary(tenant) else None,
         allowance=_allowance_out(allowance(tenant)),
         usage=UsageOut(items=items or 0, queries_this_month=queries or 0),
         plans=[PlanOut(plan=p, allowance=_allowance_out(PLANS[p])) for p in Plan],

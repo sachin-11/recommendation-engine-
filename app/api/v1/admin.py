@@ -13,6 +13,7 @@ from fastapi import APIRouter, Query
 from app.api.v1.items import AUTH_RESPONSES, PROTECTED
 from app.middleware.auth import PlatformAdminDep
 from app.schemas.admin import (
+    ComplimentaryGrant,
     LimitsUpdate,
     PlatformOverview,
     SuspendRequest,
@@ -94,3 +95,30 @@ async def update_limits(
     service: AdminServiceDep,
 ) -> WorkspaceDetail:
     return await service.update_limits(tenant_id, payload, admin)
+
+
+@router.put(
+    "/workspaces/{tenant_id}/complimentary",
+    summary="Give complimentary Pro",
+    description="Pro without a subscription, for a number of days or until revoked. "
+    "Replaces an earlier grant. Has no effect on a Stripe subscription.",
+    responses=_NOT_FOUND,
+)
+async def grant_complimentary(
+    tenant_id: uuid.UUID,
+    payload: ComplimentaryGrant,
+    admin: PlatformAdminDep,
+    service: AdminServiceDep,
+) -> WorkspaceDetail:
+    return await service.grant_complimentary(tenant_id, payload, admin)
+
+
+@router.delete(
+    "/workspaces/{tenant_id}/complimentary",
+    summary="End complimentary Pro",
+    responses=_NOT_FOUND,
+)
+async def revoke_complimentary(
+    tenant_id: uuid.UUID, admin: PlatformAdminDep, service: AdminServiceDep
+) -> WorkspaceDetail:
+    return await service.revoke_complimentary(tenant_id, admin)

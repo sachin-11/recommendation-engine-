@@ -1,4 +1,5 @@
-"""Platform admin: list and inspect every workspace, suspend and reactivate, set limits."""
+"""Platform admin: list and inspect every workspace, suspend and reactivate, set limits,
+see each workspace's billing and give complimentary Pro."""
 
 import math
 import uuid
@@ -17,15 +18,17 @@ from app.models.api_key import ApiKey
 from app.models.base import utcnow
 from app.models.item import Item
 from app.models.recommendation_log import RecommendationLog
-from app.models.tenant import Tenant
+from app.models.tenant import Plan, Tenant
 from app.models.token_usage import TokenUsage
 from app.models.user import Role, User
 from app.schemas.account import UserResponse
 from app.schemas.admin import (
+    ComplimentaryGrant,
     DailyCount,
     LimitsUpdate,
     PlatformOverview,
     TopWorkspace,
+    WorkspaceBillingOut,
     WorkspaceDetail,
     WorkspaceLimitsOut,
     WorkspaceList,
@@ -35,6 +38,7 @@ from app.schemas.admin import (
 )
 from app.schemas.tenant import ApiKeyResponse
 from app.services.analytics_service import AnalyticsService
+from app.services.billing.plans import PAID_STATUSES, entitled_plan, is_complimentary
 from app.services.workspace_limits import month_start
 
 log = structlog.get_logger(__name__)
@@ -45,6 +49,29 @@ DAILY_DAYS = 30
 
 def _cost(tokens: int) -> float:
     return round(tokens * settings.EMBEDDING_PRICE_PER_MILLION_TOKENS / 1_000_000, 6)
+
+
+def _stripe_customer_url(customer_id: str | None) -> str | None:
+    if not customer_id:
+        return None
+    key = settings.STRIPE_SECRET_KEY.get_secret_value() if settings.STRIPE_SECRET_KEY else ""
+    mode = "test/" if key.startswith(("sk_test_", "rk_test_")) else ""
+    return f"https://dashboard.stripe.com/{mode}customers/{customer_id}"
+
+
+def _billing(tenant: Tenant) -> WorkspaceBillingOut:
+    return WorkspaceBillingOut(
+        plan=entitled_plan(tenant),
+        subscribed_plan=tenant.plan,
+        subscription_status=tenant.subscription_status,
+        current_period_end=tenant.current_period_end,
+        cancel_at_period_end=tenant.cancel_at_period_end,
+        stripe_customer_url=_stripe_customer_url(tenant.stripe_customer_id),
+        complimentary=is_complimentary(tenant),
+        complimentary_since=tenant.comp_pro_since,
+        complimentary_until=tenant.comp_pro_until,
+        complimentary_reason=tenant.comp_pro_reason,
+    )
 
 
 class AdminService:
@@ -126,6 +153,7 @@ class AdminService:
                 monthly_query_limit=tenant.monthly_query_limit,
                 rate_limit_rpm=tenant.rate_limit_rpm,
             ),
+            "billing": _billing(tenant),
         }
 
     async def list_workspaces(
@@ -231,6 +259,33 @@ class AdminService:
         log.info("workspace_limits_changed", tenant_id=str(tenant.id), by=admin.email, **changes)
         return await self.get_workspace(tenant.id)
 
+    async def grant_complimentary(
+        self, tenant_id: uuid.UUID, grant: ComplimentaryGrant, admin: User
+    ) -> WorkspaceDetail:
+        """Pro without a subscription, from now, for `days` or until revoked. A new grant
+        replaces the previous one."""
+        tenant = await self._tenant(tenant_id)
+        now = utcnow()
+        tenant.comp_pro_since = now
+        tenant.comp_pro_until = now + timedelta(days=grant.days) if grant.days else None
+        tenant.comp_pro_reason = grant.reason
+        await self._session.commit()
+        log.info(
+            "complimentary_pro_granted",
+            tenant_id=str(tenant.id),
+            by=admin.email,
+            days=grant.days,
+            reason=grant.reason,
+        )
+        return await self.get_workspace(tenant.id)
+
+    async def revoke_complimentary(self, tenant_id: uuid.UUID, admin: User) -> WorkspaceDetail:
+        tenant = await self._tenant(tenant_id)
+        tenant.comp_pro_since = tenant.comp_pro_until = tenant.comp_pro_reason = None
+        await self._session.commit()
+        log.info("complimentary_pro_revoked", tenant_id=str(tenant.id), by=admin.email)
+        return await self.get_workspace(tenant.id)
+
     async def _tenant(self, tenant_id: uuid.UUID) -> Tenant:
         tenant = await self._session.get(Tenant, tenant_id)
         if tenant is None:
@@ -294,6 +349,20 @@ class AdminService:
             ),
             tokens_this_month=int(tokens_month or 0),
             estimated_cost_this_month_usd=_cost(int(tokens_month or 0)),
+            pro_paying=await self._count(
+                select(func.count()).where(
+                    Tenant.plan == Plan.PRO, Tenant.subscription_status.in_(PAID_STATUSES)
+                )
+            ),
+            pro_complimentary=await self._count(
+                select(func.count()).where(
+                    Tenant.comp_pro_since.is_not(None),
+                    or_(Tenant.comp_pro_until.is_(None), Tenant.comp_pro_until > now),
+                )
+            ),
+            payments_past_due=await self._count(
+                select(func.count()).where(Tenant.subscription_status == "past_due")
+            ),
             queries_daily=daily,
             top_workspaces=[
                 TopWorkspace(

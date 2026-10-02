@@ -50,6 +50,10 @@ class BillingResponse(BaseModel):
     )
     current_period_end: datetime | None
     cancel_at_period_end: bool
+    complimentary: bool = Field(description="Pro given by the platform, without a subscription.")
+    complimentary_until: datetime | None = Field(
+        description="When complimentary Pro ends; null with complimentary: no end."
+    )
     allowance: AllowanceOut = Field(description="Limits in force, admin overrides included.")
     usage: UsageOut
     plans: list[PlanOut] = Field(description="What each plan includes.")

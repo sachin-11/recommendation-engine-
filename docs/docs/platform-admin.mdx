@@ -29,9 +29,9 @@ The admin API accepts only a dashboard session of a platform admin. Integration 
 
 ## What you see
 
-- **Overview:** workspaces (active, suspended, new in 30 days), users, items, recommendations today and this month, OpenAI embedding tokens and their estimated cost, daily recommendations across the platform, and the busiest workspaces.
-- **Workspaces:** every workspace with its owner, members, items, recommendations and cost this month, and when it was last active. You can search by name or email, filter by status, and sort by newest, recent activity, queries, tokens, items or name.
-- **One workspace:** its daily recommendations for 30 days, members and their last sign-in, integration API keys and when each was last used, items by embedding status, and its limits.
+- **Overview:** workspaces (active, suspended, new in 30 days), users, items, recommendations today and this month, OpenAI embedding tokens and their estimated cost, workspaces on paid Pro and on complimentary Pro, payments past due, daily recommendations across the platform, and the busiest workspaces.
+- **Workspaces:** every workspace with its plan, owner, members, items, recommendations and cost this month, and when it was last active. You can search by name or email, filter by status, and sort by newest, recent activity, queries, tokens, items or name.
+- **One workspace:** its daily recommendations for 30 days, members and their last sign-in, integration API keys and when each was last used, items by embedding status, its limits, and its billing: the plan in force, the Stripe subscription status and renewal date, and a link to the customer in the Stripe dashboard.
 
 Cost is estimated from `EMBEDDING_PRICE_PER_MILLION_TOKENS`, the same way as on the Analytics page.
 
@@ -44,6 +44,15 @@ Cost is estimated from `EMBEDDING_PRICE_PER_MILLION_TOKENS`, the same way as on 
 - nothing is deleted: items, vectors, keys and members stay as they are.
 
 The workspace only sees that it is suspended, never the reason. **Reactivate** restores access at once, and existing keys and sessions work again. You cannot suspend your own workspace.
+
+## Complimentary Pro
+
+Billing is self-serve: workspaces upgrade, change their card and cancel through Stripe, and admins do not manage it for them. For the exceptions (a demo account, a partner, a support case), **Give Pro** puts a workspace on Pro without a subscription:
+
+- for a number of days, or until you revoke it,
+- with a reason, which is an internal note the workspace never sees.
+
+The workspace's Billing page shows that it is on complimentary Pro and when it ends. When it ends or is revoked, the workspace goes back to the plan it pays for, or Free. A grant does not touch a Stripe subscription, and a new grant replaces the previous one.
 
 ## Limits
 
@@ -71,5 +80,7 @@ The dashboard calls these endpoints. All of them need a platform admin session i
 | `POST /api/v1/admin/workspaces/{id}/suspend` `{"reason": "…"}` | Suspend |
 | `POST /api/v1/admin/workspaces/{id}/activate` | Reactivate |
 | `PATCH /api/v1/admin/workspaces/{id}/limits` `{"max_items": 5000}` | Set limits. Only the fields you send change, and `null` restores the default. |
+| `PUT /api/v1/admin/workspaces/{id}/complimentary` `{"days": 30, "reason": "…"}` | Give complimentary Pro; `days` null means until revoked |
+| `DELETE /api/v1/admin/workspaces/{id}/complimentary` | End complimentary Pro |
 
 Scripts that hold the `ADMIN_API_KEY` keep using `/api/v1/tenants`. See the API reference.

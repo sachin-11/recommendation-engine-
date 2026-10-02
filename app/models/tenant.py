@@ -73,6 +73,11 @@ class Tenant(BaseEntity):
     cancel_at_period_end: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=false()
     )
+    # Pro given by a platform admin without a subscription: a demo account, a partner, a
+    # support case. In force from comp_pro_since until comp_pro_until (null: no end).
+    comp_pro_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    comp_pro_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    comp_pro_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     api_keys: Mapped[list["ApiKey"]] = relationship(
         back_populates="tenant",
