@@ -296,7 +296,7 @@ Each module was built in phases, tested and committed separately.
   - For a number of days or until revoked, with an internal reason the workspace never sees.
   - It does not touch Stripe. When it ends, the workspace falls back to what it pays for, or
     Free.
-- **One rule decides the plan** (): complimentary Pro first, then a paid plan
+- **One rule decides the plan** (`entitled_plan`): complimentary Pro first, then a paid plan
   while its subscription is in force, else Free. Limits, LLM features and the billing page all
   read that one function.
 - **Security:** there is no API for a workspace to give itself Pro; only a platform admin
