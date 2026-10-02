@@ -4,7 +4,8 @@ name: Deploy to EKS
 # roll them out on the EKS cluster (infra/eks). Also runnable by hand from the Actions tab.
 #
 # No AWS keys are stored: the job gets short-lived credentials through GitHub's OIDC token,
-# for the role Terraform made (infra/eks/github-deploy.tf). Repository variables:
+# for the role Terraform made (infra/eks/github-deploy.tf). Settings, read from repository
+# variables, or from repository secrets of the same name when no variable is set:
 #   EKS_DEPLOY_ENABLED    "true" while the cluster exists; otherwise the job is skipped
 #   EKS_DEPLOY_ROLE_ARN   terraform output github_deploy_role_arn
 #   APP_URL               e.g. https://reco.rasuonline.in, for the smoke test
@@ -39,9 +40,9 @@ jobs:
     steps:
       - id: check
         env:
-          ENABLED: ${{ vars.EKS_DEPLOY_ENABLED }}
-          ROLE_ARN: ${{ vars.EKS_DEPLOY_ROLE_ARN }}
-          APP_URL: ${{ vars.APP_URL }}
+          ENABLED: ${{ vars.EKS_DEPLOY_ENABLED || secrets.EKS_DEPLOY_ENABLED }}
+          ROLE_ARN: ${{ vars.EKS_DEPLOY_ROLE_ARN || secrets.EKS_DEPLOY_ROLE_ARN }}
+          APP_URL: ${{ vars.APP_URL || secrets.APP_URL }}
           CI_RESULT: ${{ github.event.workflow_run.conclusion }}
         run: |
           echo "EKS_DEPLOY_ENABLED='$ENABLED'"
@@ -57,7 +58,7 @@ jobs:
           echo "deploy=$enabled"
           echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
           if [ "$enabled" = false ] && [ -z "$ENABLED$ROLE_ARN" ]; then
-            echo "::warning::No EKS_DEPLOY_* repository variables are visible. Add them under Settings → Secrets and variables → Actions → Variables (not Secrets, not an Environment)."
+            echo "::warning::No EKS_DEPLOY_* repository variables or secrets are visible. Add them under Settings → Secrets and variables → Actions (repository level, not an Environment)."
           fi
 
   deploy:
@@ -74,7 +75,7 @@ jobs:
       - name: AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.EKS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ vars.EKS_DEPLOY_ROLE_ARN || secrets.EKS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to ECR
@@ -127,13 +128,15 @@ jobs:
           done
 
       - name: Smoke test
-        if: vars.APP_URL != ''
+        env:
+          APP_URL: ${{ vars.APP_URL || secrets.APP_URL }}
         run: |
+          if [ -z "$APP_URL" ]; then echo "APP_URL is not set; skipping"; exit 0; fi
           for i in $(seq 1 12); do
-            if curl -fsS "${{ vars.APP_URL }}/health"; then echo; exit 0; fi
+            if curl -fsS "$APP_URL/health"; then echo; exit 0; fi
             sleep 10
           done
-          echo "::error::${{ vars.APP_URL }}/health did not answer 200"
+          echo "::error::$APP_URL/health did not answer 200"
           exit 1
 
       - name: Show the failure
