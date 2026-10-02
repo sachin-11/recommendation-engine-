@@ -50,3 +50,9 @@ variable "github_repository" {
   type        = string
   default     = "sachin-11/recommendation-engine-"
 }
+
+variable "github_repository_with_ids" {
+  description = "The same repo as owner@owner_id/name@repo_id, the form GitHub's OIDC `sub` claim uses."
+  type        = string
+  default     = "sachin-11@44609635/recommendation-engine-@1384500853"
+}

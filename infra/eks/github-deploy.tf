@@ -22,7 +22,13 @@ resource "aws_iam_role" "github_deploy" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           # Only workflow runs on main (pushes, and workflow_run events, which run on main).
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/main"
+          # GitHub now puts the owner and repo ids in `sub` (owner@id/repo@id), which a
+          # deleted-and-recreated repo with the same name cannot match; accept the
+          # older name-only form as well.
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:${var.github_repository}:ref:refs/heads/main",
+            "repo:${var.github_repository_with_ids}:ref:refs/heads/main",
+          ]
         }
       }
     }]
