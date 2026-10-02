@@ -1,0 +1,39 @@
+{
+  "services": {
+    "5771ae09-22f6-4b3c-8be3-a7878c230e19": {
+      "source": {
+        "repo": "sachin-11/recommendation-engine-",
+        "branch": "main",
+        "checkSuites": true
+      },
+      "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "Dockerfile"
+      },
+      "deploy": {
+        "preDeployCommand": [
+          "alembic upgrade head"
+        ],
+        "healthcheckPath": "/health",
+        "healthcheckTimeout": 120,
+        "restartPolicyType": "ON_FAILURE",
+        "restartPolicyMaxRetries": 5
+      }
+    },
+    "53672735-fc06-47cb-a356-c9765106fbe0": {
+      "source": {
+        "repo": "sachin-11/recommendation-engine-",
+        "branch": "main",
+        "checkSuites": true
+      },
+      "build": {
+        "builder": "DOCKERFILE",
+        "dockerfilePath": "Dockerfile"
+      },
+      "deploy": {
+        "startCommand": "python -m app.workers.embedding_worker",
+        "restartPolicyType": "ALWAYS"
+      }
+    }
+  }
+}
