@@ -3,6 +3,7 @@
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { DemoBanner } from "@/components/account/DemoBanner";
 import { VerifyEmailBanner } from "@/components/account/VerifyEmailBanner";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
@@ -42,6 +43,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
+          <DemoBanner />
           <VerifyEmailBanner />
           {children}
         </main>

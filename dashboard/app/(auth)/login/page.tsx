@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { KeyRound, Loader2, Mail } from "lucide-react";
+import { KeyRound, Loader2, Mail, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { FieldError, Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { apiErrorMessage } from "@/lib/api";
-import { useApiKeyLogin, useLogin } from "@/lib/hooks/account";
+import { useApiKeyLogin, useDemoAvailable, useDemoLogin, useLogin } from "@/lib/hooks/account";
 import {
   apiKeyLoginSchema,
   type ApiKeyLoginValues,
@@ -129,6 +129,38 @@ function ApiKeyForm() {
   );
 }
 
+/** One click into the public demo: no account, no email. Hidden when the server has none. */
+function DemoButton() {
+  const { data: available } = useDemoAvailable();
+  const demo = useDemoLogin();
+  const router = useRouter();
+  if (!available) return null;
+  return (
+    <div className="mt-6 space-y-2">
+      <div className="flex items-center gap-3 text-xs uppercase text-muted-foreground">
+        <span className="h-px flex-1 bg-border" /> or <span className="h-px flex-1 bg-border" />
+      </div>
+      <Button
+        variant="outline"
+        className="w-full"
+        disabled={demo.isPending}
+        onClick={() =>
+          demo.mutate(undefined, {
+            onSuccess: () => router.replace("/dashboard/recommend"),
+            onError: (error) => toast.error("The demo is not available", { description: apiErrorMessage(error) }),
+          })
+        }
+      >
+        {demo.isPending ? <Loader2 className="animate-spin" /> : <Sparkles />}
+        Explore the live demo
+      </Button>
+      <p className="text-center text-xs text-muted-foreground">
+        A read-only workspace with sample jobs, AI search and analytics. No sign-up.
+      </p>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   return (
     <Card className="border-0 shadow-none sm:border sm:shadow-sm">
@@ -155,6 +187,7 @@ export default function LoginPage() {
             </TabsContent>
           </Tabs>
         </Suspense>
+        <DemoButton />
         <p className="mt-6 text-center text-sm text-muted-foreground">
           New here?{" "}
           <Link href="/register" className="font-medium text-primary hover:underline">

@@ -302,6 +302,22 @@ Each module was built in phases, tested and committed separately.
 - **Security:** there is no API for a workspace to give itself Pro; only a platform admin
   session can, and integration API keys are refused on admin routes.
 
+### Module 16 — Public demo
+- **Problem:** an interviewer who opens the link should not have to sign up, verify an email
+  and upload data before seeing anything.
+- **Explore the live demo** on the sign-in page gives a 2-hour session in a shared, seeded
+  workspace: 125 realistic jobs, hybrid search and LLM re-ranking on, a golden set, and
+  complimentary Pro (Module 15) so Ask works.
+- **Safe by construction:**
+  - Visitors are the workspace's **VIEWER**: they can search, ask, give feedback and read
+    analytics, but not upload, change settings, create keys or run evaluations (403).
+  - The endpoint refuses to hand out a session if the demo user has any stronger role.
+  - Cost is capped: a per-client limit on new demo sessions, 30 requests a minute per
+    session, 3,000 recommendations a month for the workspace, and LLM answers are cached.
+  - It is off unless `DEMO_ENABLED` is set.
+- **Shared, not per visitor:** one seeded workspace costs its embeddings once; a sandbox per
+  visitor would re-embed the data for every visit.
+
 ## Engineering practices worth mentioning
 
 - **Tests:**

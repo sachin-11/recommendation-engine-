@@ -51,6 +51,21 @@ Pro plan. `EMAIL_BACKEND=resend` sends through Resend's HTTPS API instead. The d
 `rasuonline.in` is verified in Resend with DKIM, SPF (on `send.`) and the existing DMARC
 record, all at GoDaddy.
 
+## Public demo
+
+The sign-in page offers **Explore the live demo**: a 2-hour, read-only session in a demo
+workspace, without sign-up. To set it up (once, and again to refresh it):
+
+```bash
+railway ssh --service api python scripts/demo_workspace.py
+railway variables --service api --set DEMO_ENABLED=true
+```
+
+The script creates the workspace "RecoEngine Demo": 125 jobs, hybrid search and LLM
+re-ranking on, complimentary Pro, and limits that cap what anonymous visitors can cost (3,000
+recommendations a month, 30 requests a minute per session). Visitors sign in as its VIEWER,
+so they can search, ask and read analytics, but cannot change anything.
+
 ## Setting it up again
 
 ```bash

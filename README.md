@@ -28,6 +28,7 @@ You get a REST API, an admin dashboard, SDKs for JavaScript and Python, and Stri
 | 13. Ask | `POST /recommend/ask` turns a plain-language question into search text and checked filters; results and a written answer stream over Server-Sent Events |
 | 14. Billing | Free and Pro plans with item, query and LLM limits; Stripe Checkout and Customer Portal; idempotent, order-safe webhooks |
 | 15. Admin billing | Each workspace's plan, Stripe status and customer link in the platform admin; paid and complimentary Pro counts; complimentary Pro for a set time or until revoked |
+| 16. Public demo | **Explore the live demo** on the sign-in page: a read-only session, without sign-up, in a seeded workspace of 125 jobs with hybrid search, LLM re-ranking and Ask on, and limits that cap its cost |
 | Deploy: EKS | Terraform for the VPC, EKS and ECR; Kubernetes manifests with Kustomize; ALB Ingress with HTTPS; API autoscaling; CI/CD with GitHub OIDC |
 
 ## Architecture

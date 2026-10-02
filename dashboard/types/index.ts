@@ -64,6 +64,8 @@ export interface Tenant {
   has_password: boolean;
   /** False until the emailed link is opened; API keys need a verified email. */
   email_verified: boolean;
+  /** Signed in to the public, read-only demo workspace. */
+  is_demo?: boolean;
   created_at: string;
   updated_at: string;
 }

@@ -181,3 +181,26 @@ export function useDeleteAccount() {
     },
   });
 }
+
+/** Whether this server offers the public demo. */
+export function useDemoAvailable() {
+  return useQuery({
+    queryKey: ["demo", "available"],
+    queryFn: async () => (await api.get<{ available: boolean }>("/auth/demo")).data.available,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+/** A short, read-only session in the public demo workspace; no password. */
+export function useDemoLogin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post<LoginResponse>("/auth/demo")).data,
+    onSuccess: (data) => {
+      setApiKey(data.api_key);
+      queryClient.clear();
+      queryClient.setQueryData(keys.me, data.tenant);
+    },
+  });
+}
