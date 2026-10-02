@@ -3724,6 +3724,68 @@
         "description": "Create a workspace and its OWNER user and sign the owner in: the response carries a 7-day session key. A verification link is emailed; until it is opened the account cannot create API keys and can ingest at most 100 items a day."
       }
     },
+    "/api/v1/auth/demo": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Whether the public demo is available",
+        "operationId": "getDemoAvailability",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoAvailability"
+                }
+              }
+            }
+          }
+        },
+        "description": "Whether this server offers the public demo (DEMO_ENABLED). No authentication."
+      },
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Sign in to the public, read-only demo workspace",
+        "operationId": "demoLogin",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The demo is not available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many demo sessions from this client",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Sign in to the public demo workspace as a read-only VIEWER, without a password. The session key lasts DEMO_SESSION_MINUTES (2 hours by default). 404 when the demo is off; 429 after a few sessions a minute from one client."
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -7264,6 +7326,20 @@
         ],
         "title": "DeleteAccountRequest"
       },
+      "DemoAvailability": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available",
+            "description": "Whether POST /auth/demo can sign a visitor in."
+          }
+        },
+        "type": "object",
+        "required": [
+          "available"
+        ],
+        "title": "DemoAvailability"
+      },
       "DomainConfig": {
         "properties": {
           "primary_embedding_field": {
@@ -8579,6 +8655,12 @@
             "type": "boolean",
             "title": "Email Verified",
             "description": "The signed-in user's email (the owner's, for an integration key)."
+          },
+          "is_demo": {
+            "type": "boolean",
+            "title": "Is Demo",
+            "description": "Signed in to the public, read-only demo workspace.",
+            "default": false
           }
         },
         "type": "object",

@@ -20,6 +20,7 @@ from app.core.exceptions import (
     BadRequestError,
     ConflictError,
     ForbiddenError,
+    NotFoundError,
     ServiceUnavailableError,
     UnauthorizedError,
     WorkspaceSuspendedError,
@@ -39,6 +40,7 @@ from app.services.tenant_service import TenantService
 
 SESSION_TTL = timedelta(days=7)
 SESSION_KEY_NAME = "Dashboard session"
+DEMO_UNAVAILABLE = "The live demo is not available on this server."
 # Changing any of these makes stored vectors or their metadata stale.
 _REBUILD_FIELDS = ("primary_embedding_field", "searchable_fields", "filter_fields")
 
@@ -83,7 +85,29 @@ class AccountService:
             raise ForbiddenError("This user has been deactivated")
         return await self.start_session(tenant, user)
 
-    async def start_session(self, tenant: Tenant, user: User) -> Session:
+    async def demo_session(self) -> Session:
+        """A short, read-only session in the public demo workspace.
+
+        Only ever for a VIEWER: if the demo user was given a stronger role by mistake, no
+        session is handed out, since anyone on the internet can ask for one.
+        """
+        if not settings.DEMO_ENABLED:
+            raise NotFoundError(DEMO_UNAVAILABLE)
+        user = await self._session.scalar(
+            select(User).where(User.email == settings.DEMO_EMAIL.lower())
+        )
+        tenant = await self._session.get(Tenant, user.tenant_id) if user else None
+        if user is None or tenant is None or not tenant.is_active or not user.is_active:
+            raise NotFoundError(DEMO_UNAVAILABLE)
+        if user.role is not Role.VIEWER:
+            raise NotFoundError(DEMO_UNAVAILABLE)
+        return await self.start_session(
+            tenant, user, ttl=timedelta(minutes=settings.DEMO_SESSION_MINUTES)
+        )
+
+    async def start_session(
+        self, tenant: Tenant, user: User, ttl: timedelta = SESSION_TTL
+    ) -> Session:
         generated = generate_api_key()
         key = ApiKey(
             tenant_id=tenant.id,
@@ -91,7 +115,7 @@ class AccountService:
             name=SESSION_KEY_NAME,
             key_hash=generated.key_hash,
             key_prefix=generated.key_prefix,
-            expires_at=utcnow() + SESSION_TTL,
+            expires_at=utcnow() + ttl,
             is_session=True,
         )
         self._session.add(key)

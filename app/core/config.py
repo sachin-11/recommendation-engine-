@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     EMAIL_VERIFICATION_TTL_HOURS: int = Field(default=24, gt=0)
     PASSWORD_RESET_TTL_MINUTES: int = Field(default=60, gt=0)
     INVITATION_TTL_DAYS: int = Field(default=7, gt=0)
+    # Public demo: POST /auth/demo signs a visitor in, read-only, as the demo workspace's
+    # VIEWER user (created by scripts/demo_workspace.py). Off unless enabled.
+    DEMO_ENABLED: bool = False
+    DEMO_EMAIL: str = "demo@recoengine.example"
+    DEMO_SESSION_MINUTES: int = Field(default=120, gt=0, le=24 * 60)
     # Failed logins for one email before it is locked for LOGIN_LOCKOUT_MINUTES.
     LOGIN_MAX_FAILURES: int = Field(default=5, gt=0)
     LOGIN_LOCKOUT_MINUTES: int = Field(default=15, gt=0)

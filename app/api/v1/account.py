@@ -16,6 +16,7 @@ from app.middleware.rate_limit import RateLimiterDep
 from app.models.user import Role
 from app.schemas.account import (
     DeleteAccountRequest,
+    DemoAvailability,
     DomainConfigUpdate,
     DomainConfigUpdateResponse,
     ForgotPasswordRequest,
@@ -44,6 +45,7 @@ LOGIN_ATTEMPTS_PER_EMAIL = 10
 LOGIN_ATTEMPTS_PER_CLIENT = 30
 # Abuse limits for the public account endpoints, per minute.
 REGISTRATIONS_PER_CLIENT = 5
+DEMO_SESSIONS_PER_CLIENT = 3
 RESET_REQUESTS_PER_CLIENT = 5
 RESET_REQUESTS_PER_EMAIL = 2
 LINK_ATTEMPTS_PER_CLIENT = 20
@@ -113,6 +115,26 @@ async def register(
             settings.REQUIRE_EMAIL_VERIFICATION and not session.user.email_verified
         ),
     )
+
+
+@auth_router.get("/demo", summary="Whether the public demo is available")
+async def demo_availability() -> DemoAvailability:
+    return DemoAvailability(available=settings.DEMO_ENABLED)
+
+
+@auth_router.post(
+    "/demo",
+    summary="Sign in to the public, read-only demo workspace",
+    responses={
+        404: {"model": ErrorResponse, "description": "The demo is not available"},
+        429: {"model": ErrorResponse, "description": "Too many demo sessions from this client"},
+    },
+)
+async def demo_login(
+    request: Request, service: AccountServiceDep, limiter: RateLimiterDep
+) -> LoginResponse:
+    await limiter.hit(f"demo:client:{client_address(request)}", DEMO_SESSIONS_PER_CLIENT)
+    return login_response(await service.demo_session())
 
 
 @auth_router.post(

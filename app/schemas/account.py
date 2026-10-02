@@ -7,6 +7,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator
 
+from app.core.config import settings
 from app.models.tenant import Tenant
 from app.models.user import Role, User
 from app.schemas.tenant import DomainConfig, NonBlankStr, TenantCreate, TenantResponse
@@ -84,6 +85,9 @@ class MeResponse(TenantResponse):
     email_verified: bool = Field(
         description="The signed-in user's email (the owner's, for an integration key)."
     )
+    is_demo: bool = Field(
+        default=False, description="Signed in to the public, read-only demo workspace."
+    )
 
     @classmethod
     def build(cls, tenant: Tenant, user: User | None, role: Role) -> "MeResponse":
@@ -94,6 +98,9 @@ class MeResponse(TenantResponse):
             user=UserResponse.model_validate(user) if user else None,
             has_password=user.has_password if user else False,
             email_verified=user.email_verified if user else tenant.email_verified,
+            is_demo=bool(
+                settings.DEMO_ENABLED and user and user.email == settings.DEMO_EMAIL.lower()
+            ),
         )
 
 
@@ -107,6 +114,10 @@ class RegisterResponse(BaseModel):
     verification_required: bool = Field(
         description="True until the emailed link is opened; API keys cannot be created until then."
     )
+
+
+class DemoAvailability(BaseModel):
+    available: bool = Field(description="Whether POST /auth/demo can sign a visitor in.")
 
 
 class LoginResponse(BaseModel):

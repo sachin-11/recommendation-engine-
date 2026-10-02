@@ -387,6 +387,16 @@ _OPERATIONS: dict[tuple[str, str], tuple[str, str]] = {
         "fields sent change; null restores the default. Uploads past `max_items` and queries "
         "past the monthly limit get 403 `limit_exceeded`.",
     ),
+    ("get", "/api/v1/auth/demo"): (
+        "getDemoAvailability",
+        "Whether this server offers the public demo (DEMO_ENABLED). No authentication.",
+    ),
+    ("post", "/api/v1/auth/demo"): (
+        "demoLogin",
+        "Sign in to the public demo workspace as a read-only VIEWER, without a password. The "
+        "session key lasts DEMO_SESSION_MINUTES (2 hours by default). 404 when the demo is "
+        "off; 429 after a few sessions a minute from one client.",
+    ),
     ("put", "/api/v1/admin/workspaces/{tenant_id}/complimentary"): (
         "grantComplimentaryPro",
         "Platform admin: give the workspace Pro without a subscription, for `days` or, with "
