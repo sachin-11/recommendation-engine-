@@ -1,0 +1,13 @@
+# gp3 EBS disks through the EBS CSI driver (installed by Terraform). The cluster's default
+# gp2 class uses the old in-tree provisioner; gp3 is cheaper per GB and faster.
+# WaitForFirstConsumer creates the disk in the zone of the node the pod is scheduled on.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+allowVolumeExpansion: true

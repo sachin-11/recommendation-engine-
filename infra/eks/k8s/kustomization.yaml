@@ -1,0 +1,23 @@
+# kubectl apply -k infra/eks/k8s
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: recoengine
+resources:
+  - namespace.yaml
+  - storageclass.yaml
+  - configmap.yaml
+  - postgres.yaml
+  - redis.yaml
+  - mailpit.yaml
+  - migrate-job.yaml
+  - api.yaml
+  - worker.yaml
+  - dashboard.yaml
+# The manifests name images by role; this maps them to ECR and the deployed tag.
+images:
+  - name: recoengine-api
+    newName: 964775859218.dkr.ecr.us-east-1.amazonaws.com/recoengine/api
+    newTag: e163940
+  - name: recoengine-dashboard
+    newName: 964775859218.dkr.ecr.us-east-1.amazonaws.com/recoengine/dashboard
+    newTag: e163940

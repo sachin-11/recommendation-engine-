@@ -1,0 +1,21 @@
+# Database migrations, run once per deploy rather than by every API replica. Re-applying
+# the manifests needs the old Job deleted first: kubectl -n recoengine delete job migrate
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  backoffLimit: 6 # Postgres may still be starting: retry with backoff
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: recoengine-api
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: { name: recoengine-config }
+            - secretRef: { name: recoengine-secrets }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 512Mi }

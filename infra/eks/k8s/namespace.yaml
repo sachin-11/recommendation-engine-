@@ -1,0 +1,6 @@
+# Everything the app runs lives in this namespace, so `kubectl delete namespace recoengine`
+# removes it all, the Postgres disk included.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: recoengine

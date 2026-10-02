@@ -1,0 +1,22 @@
+# Settings that are not secret. Secrets (API keys, passwords) are in the Secret
+# `recoengine-secrets`, created by make-secret.sh from the repo's .env.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: recoengine-config
+data:
+  APP_ENV: production
+  LOG_LEVEL: INFO
+  WEB_CONCURRENCY: "2"
+  REDIS_URL: redis://redis:6379/0
+  # Emails (verification, password reset) go to Mailpit inside the cluster.
+  EMAIL_BACKEND: smtp
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_SECURITY: none
+  EMAIL_FROM: RecoEngine <no-reply@recoengine.local>
+  # Replaced with the load balancer's address in step 5.
+  DASHBOARD_URL: http://localhost
+  ALLOWED_ORIGINS: http://localhost
+  BILLING_ENABLED: "false"
+  LANGSMITH_TRACING: "false"

@@ -1,0 +1,31 @@
+# Embeds PENDING items and rebuilds item stats; the same image as the API, another command.
+# Several workers are safe (items are claimed atomically, stats refresh takes a Redis lock).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: worker }
+  template:
+    metadata:
+      labels: { app: worker }
+    spec:
+      containers:
+        - name: worker
+          image: recoengine-api
+          command: ["python", "-m", "app.workers.embedding_worker"]
+          envFrom:
+            - configMapRef: { name: recoengine-config }
+            - secretRef: { name: recoengine-secrets }
+          ports:
+            - name: metrics
+              containerPort: 9100
+          livenessProbe:
+            tcpSocket: { port: 9100 }
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { memory: 768Mi }
