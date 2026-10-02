@@ -15,8 +15,8 @@ data:
   SMTP_PORT: "1025"
   SMTP_SECURITY: none
   EMAIL_FROM: RecoEngine <no-reply@recoengine.local>
-  # Replaced with the load balancer's address in step 5.
-  DASHBOARD_URL: http://localhost
-  ALLOWED_ORIGINS: http://localhost
+  # The public address (a CNAME to the load balancer, with an ACM certificate).
+  DASHBOARD_URL: https://reco.rasuonline.in
+  ALLOWED_ORIGINS: https://reco.rasuonline.in
   BILLING_ENABLED: "false"
   LANGSMITH_TRACING: "false"

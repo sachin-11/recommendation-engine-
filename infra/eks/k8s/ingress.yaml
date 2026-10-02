@@ -1,6 +1,6 @@
 # One public Application Load Balancer, made by the AWS Load Balancer Controller from this
 # Ingress. The API's paths go to the API (its /docs are off in production); everything else to the dashboard, which calls the
-# API on the same origin. Plain HTTP on the ALB's own hostname: no domain or certificate.
+# API on the same origin. Served on the app's domain (a CNAME to the ALB at the registrar).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -11,6 +11,11 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     # Server-Sent Events (Ask) keep a connection open while the answer is written.
     alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=120
+    # HTTPS with the ACM certificate for the app's domain (Terraform acm.tf); plain HTTP
+    # requests are redirected to HTTPS.
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:964775859218:certificate/75c794bf-b490-4352-ac25-56bc381bd11d
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
 spec:
   ingressClassName: alb
   rules:
