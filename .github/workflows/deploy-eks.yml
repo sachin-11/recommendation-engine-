@@ -30,10 +30,39 @@ env:
   NAMESPACE: recoengine
 
 jobs:
+  # Always runs, so the log says why a deploy did or did not happen. The variables are
+  # not secrets (the role ARN only names a role; GitHub's OIDC token is what proves access).
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        env:
+          ENABLED: ${{ vars.EKS_DEPLOY_ENABLED }}
+          ROLE_ARN: ${{ vars.EKS_DEPLOY_ROLE_ARN }}
+          APP_URL: ${{ vars.APP_URL }}
+          CI_RESULT: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          echo "EKS_DEPLOY_ENABLED='$ENABLED'"
+          echo "EKS_DEPLOY_ROLE_ARN='$ROLE_ARN'"
+          echo "APP_URL='$APP_URL'"
+          echo "event=$GITHUB_EVENT_NAME ci=${CI_RESULT:-n/a}"
+          enabled=false
+          if [ "$(echo "$ENABLED" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')" = true ] \
+            && [ -n "$ROLE_ARN" ] \
+            && { [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ "$CI_RESULT" = success ]; }; then
+            enabled=true
+          fi
+          echo "deploy=$enabled"
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+          if [ "$enabled" = false ] && [ -z "$ENABLED$ROLE_ARN" ]; then
+            echo "::warning::No EKS_DEPLOY_* repository variables are visible. Add them under Settings → Secrets and variables → Actions → Variables (not Secrets, not an Environment)."
+          fi
+
   deploy:
-    if: >-
-      vars.EKS_DEPLOY_ENABLED == 'true' &&
-      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    needs: check
+    if: needs.check.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
