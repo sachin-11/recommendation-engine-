@@ -312,8 +312,11 @@ Each module was built in phases, tested and committed separately.
   - Visitors are the workspace's **VIEWER**: they can search, ask, give feedback and read
     analytics, but not upload, change settings, create keys or run evaluations (403).
   - The endpoint refuses to hand out a session if the demo user has any stronger role.
-  - Cost is capped: a per-client limit on new demo sessions, 30 requests a minute per
-    session, 3,000 recommendations a month for the workspace, and LLM answers are cached.
+  - Cost is capped in layers: new demo sessions per client, 30 searches per session, 60 a
+    day for all visitors, 1,000 a month, and cached LLM answers. At about $0.0065 per
+    search, the worst case is about $6.50 a month.
+  - The demo caps **fail closed**: if Redis cannot count, the demo stops answering. Paying
+    workspaces fail open instead, because there availability matters more than cost.
   - It is off unless `DEMO_ENABLED` is set.
 - **Shared, not per visitor:** one seeded workspace costs its embeddings once; a sandbox per
   visitor would re-embed the data for every visit.

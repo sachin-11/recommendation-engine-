@@ -4,6 +4,10 @@ They come from the workspace's plan, or from a platform admin's override (see
 app/services/billing/plans.py). A limit of None means no cap. The requests-per-minute
 limit is applied by the rate limiter. Like the rate limiter, the monthly counter fails
 open when Redis is unreachable, rather than taking recommendations down.
+
+Visitors of the public demo also have a cap per session and one per day for all of them
+together. Those fail closed: anyone on the internet can use the demo, so when the counters
+cannot be checked, the demo stops answering rather than run up OpenAI costs.
 """
 
 import logging
@@ -15,10 +19,12 @@ from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.demo import is_demo_email
 from app.core.exceptions import LimitExceededError
 from app.core.redis_client import get_redis
-from app.middleware.auth import AuthDep
+from app.middleware.auth import AuthContext, AuthDep
 from app.models.item import Item
 from app.models.recommendation_log import RecommendationLog
 from app.models.tenant import Tenant
@@ -30,6 +36,8 @@ logger = logging.getLogger(__name__)
 _ID_LOOKUP_CHUNK = 1000
 # Kept a little longer than a month, so the key outlives the month it counts.
 _MONTH_KEY_TTL_SECONDS = 40 * 24 * 60 * 60
+_DAY_KEY_TTL_SECONDS = 2 * 24 * 60 * 60
+DEMO_SIGN_UP = "Create your own workspace to keep going."
 
 
 def month_start(now: datetime | None = None) -> datetime:
@@ -38,10 +46,13 @@ def month_start(now: datetime | None = None) -> datetime:
 
 
 class WorkspaceLimits:
-    def __init__(self, session: AsyncSession, redis: Redis, tenant: Tenant) -> None:
+    def __init__(
+        self, session: AsyncSession, redis: Redis, tenant: Tenant, auth: AuthContext | None = None
+    ) -> None:
         self._session = session
         self._redis = redis
         self._tenant = tenant
+        self._auth = auth
 
     async def ensure_item_capacity(self, external_ids: list[str]) -> None:
         """Reject an upload that would take the workspace past `max_items`. Re-uploading
@@ -74,6 +85,8 @@ class WorkspaceLimits:
     async def consume_queries(self, count: int = 1) -> None:
         """Count `count` recommendations against `monthly_query_limit`, or raise without
         counting them."""
+        if self._auth and self._auth.user and is_demo_email(self._auth.user.email):
+            await self._consume_demo(count)
         limit = allowance(self._tenant).monthly_queries
         if limit is None:
             return
@@ -101,13 +114,51 @@ class WorkspaceLimits:
                 "(UTC); contact support to raise it."
             )
 
+    async def _consume_demo(self, count: int) -> None:
+        """The demo's caps: per session key and per UTC day. Fails closed."""
+        assert self._auth is not None
+        day = datetime.now(UTC).strftime("%Y%m%d")
+        caps = [
+            (
+                f"quota:demo:session:{self._auth.api_key.id}",
+                settings.DEMO_QUERIES_PER_SESSION,
+                settings.DEMO_SESSION_MINUTES * 60,
+                f"This demo session has used its {settings.DEMO_QUERIES_PER_SESSION} searches.",
+            ),
+            (
+                f"quota:demo:day:{self._tenant.id}:{day}",
+                settings.DEMO_QUERIES_PER_DAY,
+                _DAY_KEY_TTL_SECONDS,
+                "The live demo has answered all its searches for today; it resets at midnight UTC.",
+            ),
+        ]
+        counted: list[str] = []
+        try:
+            for key, limit, ttl, message in caps:
+                async with self._redis.pipeline(transaction=True) as pipe:
+                    pipe.incrby(key, count)
+                    pipe.expire(key, ttl, nx=True)
+                    used, _ = await pipe.execute()
+                counted.append(key)
+                if int(used) > limit:
+                    for done in counted:
+                        await self._redis.decrby(done, count)
+                    raise LimitExceededError(f"{message} {DEMO_SIGN_UP}")
+        except LimitExceededError:
+            raise
+        except Exception as exc:
+            logger.warning("Demo quota unavailable; refusing the demo query", exc_info=True)
+            raise LimitExceededError(
+                f"The live demo is unavailable for a moment. {DEMO_SIGN_UP}"
+            ) from exc
+
 
 def get_workspace_limits(
     auth: AuthDep,
     session: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[Redis, Depends(get_redis)],
 ) -> WorkspaceLimits:
-    return WorkspaceLimits(session, redis, auth.tenant)
+    return WorkspaceLimits(session, redis, auth.tenant, auth)
 
 
 WorkspaceLimitsDep = Annotated[WorkspaceLimits, Depends(get_workspace_limits)]

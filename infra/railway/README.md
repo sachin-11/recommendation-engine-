@@ -62,8 +62,10 @@ railway variables --service api --set DEMO_ENABLED=true
 ```
 
 The script creates the workspace "RecoEngine Demo": 125 jobs, hybrid search and LLM
-re-ranking on, complimentary Pro, and limits that cap what anonymous visitors can cost (3,000
-recommendations a month, 30 requests a minute per session). Visitors sign in as its VIEWER,
+re-ranking on, complimentary Pro, and limits that cap what anonymous visitors can cost: 30 searches per session, 60 a day for
+all visitors (`DEMO_QUERIES_PER_SESSION`, `DEMO_QUERIES_PER_DAY`), 1,000 a month, and 30
+requests a minute per session. A search with every LLM stage costs about $0.0065, so the
+demo costs at most about $6.50 a month in OpenAI calls. Visitors sign in as its VIEWER,
 so they can search, ask and read analytics, but cannot change anything.
 
 ## Setting it up again

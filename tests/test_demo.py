@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -13,6 +14,7 @@ from app.core.config import settings
 from app.models import User
 from app.models.base import utcnow
 from app.models.user import Role
+from app.services.workspace_limits import WorkspaceLimits
 from scripts.demo_workspace import GOLDEN, golden_set
 from tests.conftest import TenantAuth
 
@@ -97,6 +99,68 @@ async def test_demo_sessions_are_rate_limited_per_client(
 ) -> None:
     codes = [(await client.post(DEMO)).status_code for _ in range(4)]
     assert codes == [200, 200, 200, 429]
+
+
+async def _visitor(client: AsyncClient) -> dict[str, str]:
+    response = await client.post(DEMO)
+    assert response.status_code == 200, response.text
+    return {"X-API-Key": response.json()["api_key"]}
+
+
+async def _search(client: AsyncClient, headers: dict[str, str]) -> int:
+    response = await client.post(
+        "/api/v1/recommend/by-text", json={"query": "python"}, headers=headers
+    )
+    return response.status_code
+
+
+async def test_demo_caps_each_session(
+    client: AsyncClient, demo_viewer: TenantAuth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "DEMO_QUERIES_PER_SESSION", 2)
+    visitor = await _visitor(client)
+
+    assert [await _search(client, visitor) for _ in range(3)] == [200, 200, 403]
+    refused = await client.post(
+        "/api/v1/recommend/by-text", json={"query": "python"}, headers=visitor
+    )
+    assert "Create your own workspace" in refused.json()["error"]["message"]
+    # A new session starts afresh; the workspace's own members are never capped this way.
+    assert await _search(client, await _visitor(client)) == 200
+    assert [await _search(client, demo_viewer.headers) for _ in range(3)] == [200, 200, 200]
+
+
+async def test_demo_caps_all_visitors_per_day(
+    client: AsyncClient, demo_viewer: TenantAuth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "DEMO_QUERIES_PER_DAY", 3)
+    first, second = await _visitor(client), await _visitor(client)
+
+    codes = [await _search(client, first), await _search(client, second)]
+    codes += [await _search(client, first), await _search(client, second)]
+
+    assert codes == [200, 200, 200, 403]
+
+
+async def test_demo_queries_are_refused_when_the_counter_is_down(
+    client: AsyncClient, demo_viewer: TenantAuth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    visitor = await _visitor(client)
+    original = WorkspaceLimits._consume_demo
+
+    class DownRedis:
+        def pipeline(self, *args: object, **kwargs: object) -> Any:
+            raise ConnectionError("redis is down")
+
+    async def consume_with_redis_down(self: WorkspaceLimits, count: int) -> None:
+        self._redis = DownRedis()  # type: ignore[assignment]
+        await original(self, count)
+
+    monkeypatch.setattr(WorkspaceLimits, "_consume_demo", consume_with_redis_down)
+
+    assert await _search(client, visitor) == 403
+    # The workspace's own members are not demo visitors: they keep working.
+    assert await _search(client, demo_viewer.headers) == 200
 
 
 def test_demo_golden_set_grades_real_jobs() -> None:

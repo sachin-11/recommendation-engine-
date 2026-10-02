@@ -7,7 +7,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator
 
-from app.core.config import settings
+from app.core.demo import is_demo_email
 from app.models.tenant import Tenant
 from app.models.user import Role, User
 from app.schemas.tenant import DomainConfig, NonBlankStr, TenantCreate, TenantResponse
@@ -98,9 +98,7 @@ class MeResponse(TenantResponse):
             user=UserResponse.model_validate(user) if user else None,
             has_password=user.has_password if user else False,
             email_verified=user.email_verified if user else tenant.email_verified,
-            is_demo=bool(
-                settings.DEMO_ENABLED and user and user.email == settings.DEMO_EMAIL.lower()
-            ),
+            is_demo=is_demo_email(user.email if user else None),
         )
 
 

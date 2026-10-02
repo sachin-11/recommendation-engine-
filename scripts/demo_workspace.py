@@ -13,7 +13,8 @@ What it sets up:
   read analytics, but not change items, settings, keys, members or the golden set.
 - Complimentary Pro with no end, so LLM re-ranking and Ask work.
 - Limits that cap what anonymous visitors can cost: recommendations per month, requests per
-  minute per session, and items.
+  minute per session, and items. The API adds DEMO_QUERIES_PER_SESSION and
+  DEMO_QUERIES_PER_DAY on top.
 - A small golden set, so the Evaluation page has something to show.
 
 In production (Railway):
@@ -152,7 +153,7 @@ async def main(monthly_queries: int, rpm: int) -> int:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--monthly-queries", type=int, default=3000)
+    parser.add_argument("--monthly-queries", type=int, default=1000)
     parser.add_argument("--rpm", type=int, default=30, help="requests a minute per session key")
     args = parser.parse_args()
     sys.exit(asyncio.run(main(args.monthly_queries, args.rpm)))

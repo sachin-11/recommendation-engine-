@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     DEMO_ENABLED: bool = False
     DEMO_EMAIL: str = "demo@recoengine.example"
     DEMO_SESSION_MINUTES: int = Field(default=120, gt=0, le=24 * 60)
+    # Recommendations (searches and questions) a demo visitor gets: per session, and for all
+    # visitors together per UTC day. They cap what anonymous visitors cost in OpenAI calls.
+    DEMO_QUERIES_PER_SESSION: int = Field(default=30, gt=0)
+    DEMO_QUERIES_PER_DAY: int = Field(default=60, gt=0)
     # Failed logins for one email before it is locked for LOGIN_LOCKOUT_MINUTES.
     LOGIN_MAX_FAILURES: int = Field(default=5, gt=0)
     LOGIN_LOCKOUT_MINUTES: int = Field(default=15, gt=0)
