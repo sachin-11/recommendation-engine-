@@ -38,3 +38,9 @@ variable "budget_usd" {
   type        = number
   default     = 20
 }
+
+variable "app_domain" {
+  description = "Hostname the app is served on with HTTPS (its DNS is managed elsewhere, e.g. GoDaddy). Empty: no certificate."
+  type        = string
+  default     = ""
+}
