@@ -42,7 +42,9 @@ so each secret is stored in one place.
 | `OPENAI_API_KEY`, `PINECONE_*`, `EMBEDDING_*` | from `.env` |
 | `EMAIL_BACKEND`, `EMAIL_FROM`, `RESEND_API_KEY` | `resend`, `RecoEngine <no-reply@rasuonline.in>`, a Resend key with sending access to that domain |
 | `DASHBOARD_URL`, `ALLOWED_ORIGINS` | the dashboard's public URL |
-| `BILLING_ENABLED` | `false` |
+| `BILLING_ENABLED` | `true`: Free and Pro plans, Stripe in **test mode** (card `4242 4242 4242 4242`) |
+| `STRIPE_SECRET_KEY`, `RECO_STRIPE_PRO_*_PRICE_ID` | the test-mode key and the Pro prices |
+| `RECO_STRIPE_WEBHOOK_SECRET` | signing secret of the Stripe webhook endpoint `https://reco.rasuonline.in/api/v1/billing/webhook` (8 events; see [billing docs](../../docs/docs/billing.mdx)) |
 
 **Why Resend and not SMTP:** Railway blocks outbound SMTP (ports 25, 465 and 587) below its
 Pro plan. `EMAIL_BACKEND=resend` sends through Resend's HTTPS API instead. The domain
