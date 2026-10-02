@@ -46,6 +46,9 @@ build-backend = "poetry.core.masonry.api"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+# Import `app` from the repo root however pytest is started (`pytest` as well as
+# `python -m pytest`); CI runs plain `pytest`, which does not add the root itself.
+pythonpath = ["."]
 addopts = "-ra"
 
 [tool.ruff]
