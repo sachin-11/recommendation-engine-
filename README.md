@@ -13,7 +13,7 @@ You get a REST API, an admin dashboard, SDKs for JavaScript and Python, and Stri
 
 | Module | What it adds |
 |---|---|
-| 1. Foundation | Multi-tenant FastAPI backend with async SQLAlchemy and Alembic; JWT sign-in; hashed API keys; per-tenant rate limits in Redis |
+| 1. Foundation | Multi-tenant FastAPI backend with async SQLAlchemy and Alembic; sign-in with expiring session keys; hashed API keys; per-tenant rate limits in Redis |
 | 2. Embedding pipeline | Item upload (JSON and CSV) in batches; OpenAI `text-embedding-3-small`; one Pinecone namespace per tenant; background worker; embedding cache |
 | 3. Query engine | `by-text`, `by-item`, `by-profile` and `batch` recommendations; validated metadata filters; 5-minute result cache; query logging |
 | 4. Dashboard | Next.js 14 admin: onboarding, items, API keys, recommendation playground, analytics, settings |
@@ -82,7 +82,7 @@ Billing is off unless `BILLING_ENABLED=true`. To try Stripe in test mode, see [d
 
 ## API at a glance
 
-All endpoints are under `/api/v1`. Integrations call them with an API key (`X-API-Key`); the dashboard uses a JWT.
+All endpoints are under `/api/v1`. Every call sends an API key (`X-API-Key`): integrations use a workspace key, and the dashboard uses the session key it gets at sign-in, which expires after 7 days.
 
 | Area | Endpoints |
 |---|---|
@@ -148,7 +148,7 @@ See [sdk/javascript](sdk/javascript/README.md) and [sdk/python](sdk/python/READM
 | Evaluation, billing, monitoring, platform admin | [evaluation](docs/docs/evaluation.mdx), [billing](docs/docs/billing.mdx), [monitoring](docs/docs/monitoring.mdx), [platform admin](docs/docs/platform-admin.mdx) |
 | API reference | Generated from the FastAPI OpenAPI schema into `docs/static/openapi.json`. Served at `/api-reference/` in the docs site and at `/docs` on a development API |
 | Dashboard | [dashboard/README.md](dashboard/README.md) |
-| Deployment | EC2: [docs/docs/deployment.mdx](docs/docs/deployment.mdx). EKS: [infra/eks/README.md](infra/eks/README.md), with interview notes in [infra/eks/INTERVIEW.md](infra/eks/INTERVIEW.md) |
+| Deployment | EC2: [docs/docs/deployment.mdx](docs/docs/deployment.mdx). EKS: [infra/eks/README.md](infra/eks/README.md), with interview notes for the whole project in [infra/eks/INTERVIEW.md](infra/eks/INTERVIEW.md) |
 
 Regenerate the API reference after changing endpoints: `python scripts/export_openapi.py`. CI fails if it is out of date.
 
