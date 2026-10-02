@@ -1,4 +1,4 @@
-# The FastAPI app. Two replicas behind one Service; the ingress (step 5) sends /api to it.
+# The FastAPI app. 2-5 replicas (autoscaled) behind one Service; the ingress (step 5) sends /api to it.
 apiVersion: v1
 kind: Service
 metadata:
@@ -15,7 +15,8 @@ kind: Deployment
 metadata:
   name: api
 spec:
-  replicas: 2
+  # No `replicas`: the HorizontalPodAutoscaler (api-hpa.yaml) owns the count, 2 to 5. Setting
+  # it here would reset a scaled-up API to 2 on every deploy.
   selector:
     matchLabels: { app: api }
   strategy:

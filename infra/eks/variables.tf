@@ -44,3 +44,9 @@ variable "app_domain" {
   type        = string
   default     = ""
 }
+
+variable "github_repository" {
+  description = "owner/name of the GitHub repo whose main branch may deploy (CI/CD)."
+  type        = string
+  default     = "sachin-11/recommendation-engine-"
+}

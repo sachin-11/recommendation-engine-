@@ -1,0 +1,7 @@
+# Cluster-wide pieces, applied once by an admin: kubectl apply -k infra/eks/k8s/cluster
+# The app itself (../) is namespaced, so CI/CD can deploy it with namespace-only rights.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - storageclass.yaml

@@ -1,0 +1,115 @@
+name: Deploy to EKS
+
+# Continuous deployment: when CI passes on main, build the images, push them to ECR and
+# roll them out on the EKS cluster (infra/eks). Also runnable by hand from the Actions tab.
+#
+# No AWS keys are stored: the job gets short-lived credentials through GitHub's OIDC token,
+# for the role Terraform made (infra/eks/github-deploy.tf). Repository variables:
+#   EKS_DEPLOY_ENABLED    "true" while the cluster exists; otherwise the job is skipped
+#   EKS_DEPLOY_ROLE_ARN   terraform output github_deploy_role_arn
+#   APP_URL               e.g. https://reco.rasuonline.in, for the smoke test
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-eks
+  cancel-in-progress: false # never stop a rollout halfway
+
+permissions:
+  id-token: write # for the OIDC token
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER: recoengine
+  NAMESPACE: recoengine
+
+jobs:
+  deploy:
+    if: >-
+      vars.EKS_DEPLOY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit CI tested, not whatever main is now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.EKS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Image tag
+        id: tag
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/recoengine/api:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build and push the dashboard image
+        uses: docker/build-push-action@v6
+        with:
+          context: dashboard
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/recoengine/dashboard:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,mode=max,scope=dashboard
+
+      - name: Point kubectl at the cluster
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER"
+
+      - name: Deploy
+        working-directory: infra/eks/k8s
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # Deploy this commit's images (the repo's kustomization pins the last manual tag).
+          sed -i -E "s/^(\s*newTag:).*/\1 $TAG/" kustomization.yaml
+          grep -n "newTag" kustomization.yaml
+          # A Job's pod template cannot be changed: replace the migration Job each deploy.
+          kubectl -n "$NAMESPACE" delete job migrate --ignore-not-found
+          kubectl apply -k .
+          kubectl -n "$NAMESPACE" wait --for=condition=complete job/migrate --timeout=300s
+          for d in api worker dashboard; do
+            kubectl -n "$NAMESPACE" rollout status "deploy/$d" --timeout=300s
+          done
+
+      - name: Smoke test
+        if: vars.APP_URL != ''
+        run: |
+          for i in $(seq 1 12); do
+            if curl -fsS "${{ vars.APP_URL }}/health"; then echo; exit 0; fi
+            sleep 10
+          done
+          echo "::error::${{ vars.APP_URL }}/health did not answer 200"
+          exit 1
+
+      - name: Show the failure
+        if: failure()
+        run: |
+          kubectl -n "$NAMESPACE" get pods -o wide || true
+          kubectl -n "$NAMESPACE" logs job/migrate --tail=50 || true
+          kubectl -n "$NAMESPACE" logs deploy/api --tail=50 || true

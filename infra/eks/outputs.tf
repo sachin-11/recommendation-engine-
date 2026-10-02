@@ -33,3 +33,8 @@ output "certificate_validation" {
     value = o.resource_record_value
   }]
 }
+
+output "github_deploy_role_arn" {
+  description = "Set as the GitHub repository variable EKS_DEPLOY_ROLE_ARN."
+  value       = aws_iam_role.github_deploy.arn
+}
